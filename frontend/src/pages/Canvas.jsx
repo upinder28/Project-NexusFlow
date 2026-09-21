@@ -15,31 +15,78 @@ const initialNodes = [
 
 export default function Canvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([
+  { id: 'e1-2', source: '1', target: '2', animated: true },
+  { id: 'e2-3', source: '2', target: '3', animated: true },
+ ]);
 
   const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), []);
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:${process.env.REACT_APP_PORT || 5000}`);
+    const ws = new WebSocket(`ws://localhost:${import.meta.env.VITE_PORT || 5000}`);
 
     ws.onmessage = (e) => {
       const { metadata, value } = JSON.parse(e.data);
       setNodes((nds) =>
-        nds.map((node) =>
-          node.type === 'sensor' && node.data.deviceId === metadata.deviceId
-            ? { ...node, data: { ...node.data, value } }
-            : node
-        )
-      );
+       nds.map((node) => {
+        if (
+           node.type === 'sensor' &&
+           node.data.deviceId === metadata.deviceId
+          ) {
+            return {
+              ...node,
+              data: { ...node.data, value },
+            };
+          }
+ 
+          if (node.id === '2' || node.id === '3') {
+          return {
+             ...node,
+            data: { ...node.data, value: Number(value) },
+         };
+        }
+
+       return node;
+      })
+     );
     };
 
     return () => ws.close();
   }, []);
 
+  const updateSensorValue = (value) => {
+  setNodes((nds) =>
+    nds.map((node) => {
+      if (node.id === '1' || node.id === '2' || node.id === '3') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            value: Number(value),
+          },
+        };
+      }
+
+      return node;
+    })
+  );
+};
+
+
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#0d1117' }}>
       <ReactFlow
-        nodes={nodes}
+        nodes={nodes.map((node) =>
+        node.id === '1'
+        ?{
+          ...node,
+            data: {
+             ...node.data,
+             onChange: updateSensorValue,
+            },
+          }
+       : node
+      )}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
