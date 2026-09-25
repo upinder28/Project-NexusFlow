@@ -1,13 +1,16 @@
 import { Handle, Position } from 'reactflow';
 
 export default function AlertNode({ data }) {
-  const triggered = data.triggered;
   return (
-    <div style={{ ...styles.node, borderColor: triggered ? '#f85149' : '#5f1e1e', borderWidth: 2, borderStyle: 'solid' }}>
+    <div style={styles.node}>
       <strong>🚨 Alert</strong>
-      <p style={{ margin: '4px 0' }}>{data.label || 'SMS Alert'}</p>
-      <p style={styles.threshold}>threshold: {data.threshold ?? 85}°C</p>
-      {triggered && <p style={styles.fire}>⚠️ ALERT TRIGGERED</p>}
+      <p>{data.label || 'SMS Alert'}</p>
+      <p style={styles.value}>
+       {data.value !== undefined ? data.value : '--'}
+      </p>
+      <p style={styles.alert}>
+       {data.value >= 70 ? '⚠️ HIGH RISK' : '✅ Normal'}
+      </p>
       <Handle type="target" position={Position.Left} />
     </div>
   );
@@ -15,6 +18,14 @@ export default function AlertNode({ data }) {
 
 const styles = {
   node: { background: '#5f1e1e', color: '#fff', padding: 10, borderRadius: 8, minWidth: 140 },
-  threshold: { color: '#ffa07a', fontSize: 12, margin: 0 },
-  fire: { color: '#f85149', fontWeight: 'bold', margin: '6px 0 0', fontSize: 12, animation: 'none' },
+  value: {
+    color: '#ff8a80',
+    fontWeight: 'bold',
+    margin: 0,
+  },
+  alert: {
+    color: '#ff5252',
+    fontWeight: 'bold',
+    margin: 0,
+  },
 };
