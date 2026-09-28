@@ -1,5 +1,6 @@
 const Telemetry = require('../models/Telemetry');
 const wss = require('../wss');
+const { pushToStream } = require('../streamEngine');
 
 const insertTelemetry = async (req, res) => {
   try {
@@ -16,6 +17,8 @@ const insertTelemetry = async (req, res) => {
     wss.clients.forEach((client) => {
       if (client.readyState === 1) client.send(JSON.stringify(doc));
     });
+
+    pushToStream(deviceId, value);
 
     res.status(201).json(doc);
   } catch (err) {
