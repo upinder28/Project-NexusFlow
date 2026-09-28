@@ -12,6 +12,17 @@ connectDB();
 
 app.use('/api/telemetry', require('./routes/telemetry'));
 
+// Graph compiler endpoint
+const { compileGraph } = require('./compiler');
+app.post('/api/compile', (req, res) => {
+  try {
+    compileGraph(req.body, wss);
+    res.json({ success: true, message: 'Graph compiled and stream started' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 const server = app.listen(process.env.PORT, () =>
   console.log(`Server running on port ${process.env.PORT}`)
 );
