@@ -1,27 +1,46 @@
-const { map, bufferCount } = require('rxjs/operators');
+const { map, bufferCount, filter } = require('rxjs/operators');
 const { getSensorStream } = require('./streamEngine');
+const { triggerAlert } = require('./alertEngine');
 
-/**
- * graph = { nodes: [...], edges: [...] }
- * Returns an Observable for the final output node
- */
+// Math operation apply karo node ke operation type ke hisaab se
+function applyMathOperation(stream, node) {
+  const { operation, operand = 1, windowSize = 5 } = node.data;
+
+  switch (operation) {
+    case 'movingAverage':
+      return stream.pipe(
+        bufferCount(windowSize, 1),
+        map((buf) => parseFloat((buf.reduce((a, b) => a + b, 0) / buf.length).toFixed(2)))
+      );
+    case 'multiply':
+      return stream.pipe(map((v) => parseFloat((v * operand).toFixed(2))));
+    case 'add':
+      return stream.pipe(map((v) => parseFloat((v + operand).toFixed(2))));
+    case 'threshold':
+      return stream.pipe(filter((v) => v >= operand));
+    default:
+      // Default: moving average
+      return stream.pipe(
+        bufferCount(windowSize, 1),
+        map((buf) => parseFloat((buf.reduce((a, b) => a + b, 0) / buf.length).toFixed(2)))
+      );
+  }
+}
+
 function compileGraph(graph, wss) {
   const { nodes, edges } = graph;
 
-  // Build adjacency: sourceNodeId -> targetNodeId
   const edgeMap = {};
   edges.forEach(({ source, target }) => {
     edgeMap[source] = target;
   });
 
-  // Find sensor node (data source)
   const sensorNode = nodes.find((n) => n.type === 'sensor');
   if (!sensorNode) throw new Error('No sensor node found in graph');
 
   const deviceId = sensorNode.data.deviceId || 'device-1';
   let stream = getSensorStream(deviceId);
 
-  // Walk the graph from sensor -> filter -> alert
   let currentId = sensorNode.id;
 
   while (edgeMap[currentId]) {
@@ -29,25 +48,23 @@ function compileGraph(graph, wss) {
     const nextNode = nodes.find((n) => n.id === nextId);
     if (!nextNode) break;
 
-    if (nextNode.type === 'filter') {
-      // Moving average over last 5 values
-      stream = stream.pipe(
-        bufferCount(5, 1),
-        map((buf) => parseFloat((buf.reduce((a, b) => a + b, 0) / buf.length).toFixed(2)))
-      );
+    if (nextNode.type === 'filter' || nextNode.type === 'mathOperation') {
+      stream = applyMathOperation(stream, nextNode);
     }
 
     if (nextNode.type === 'alert') {
-      const threshold = nextNode.data.threshold || 70;
+      const alertNode = nextNode;
       stream = stream.pipe(
-        map((value) => ({ value, alert: value >= threshold }))
+        map((value) => {
+          triggerAlert(alertNode, value, wss);
+          return { value, alert: value >= (alertNode.data.threshold || 70) };
+        })
       );
     }
 
     currentId = nextId;
   }
 
-  // Subscribe — broadcast result to all WebSocket clients
   stream.subscribe((result) => {
     const payload = typeof result === 'object' ? result : { value: result };
     wss.clients.forEach((client) => {
