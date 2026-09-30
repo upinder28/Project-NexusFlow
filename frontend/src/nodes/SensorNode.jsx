@@ -6,6 +6,12 @@ export default function SensorNode({ data }) {
       <strong>📡 Sensor</strong>
       <p>{data.label || 'Turbine Sensor'}</p>
       <p style={styles.value}>{data.value !== undefined ? `${data.value}` : '-- '}</p>
+      <input
+         type="number"
+         placeholder="Enter value"
+         onChange={(e) => data.onChange?.(e.target.value)}
+         style={{ width: '100px', marginTop: '8px' }}
+        />
       <Handle type="source" position={Position.Right} />
     </div>
   );
