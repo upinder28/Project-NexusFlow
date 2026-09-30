@@ -4,8 +4,10 @@ import 'reactflow/dist/style.css';
 import SensorNode from '../nodes/SensorNode';
 import FilterNode from '../nodes/FilterNode';
 import AlertNode from '../nodes/AlertNode';
+import HttpSourceNode from '../nodes/HttpSourceNode';
+import SimulatorSourceNode from '../nodes/SimulatorSourceNode';
 
-const nodeTypes = { sensor: SensorNode, filter: FilterNode, alert: AlertNode };
+const nodeTypes = { sensor: SensorNode, filter: FilterNode, alert: AlertNode, httpSource: HttpSourceNode, simulatorSource: SimulatorSourceNode };
 
 const STORAGE_KEY = 'nexusflow_graph';
 
@@ -56,7 +58,7 @@ export default function Canvas() {
 
       setNodes((nds) =>
         nds.map((node) => {
-          if (node.type === 'sensor' && node.data.deviceId === deviceId)
+          if ((node.type === 'sensor' || node.type === 'simulatorSource' || node.type === 'httpSource') && node.data.deviceId === deviceId)
             return { ...node, data: { ...node.data, value } };
           if (node.type === 'filter')
             return { ...node, data: { ...node.data, avg } };
@@ -83,6 +85,8 @@ export default function Canvas() {
       sensor: { label: 'New Sensor', deviceId: `device-${nodeCounter}` },
       filter: { label: 'Moving Average' },
       alert: { label: 'SMS Alert', threshold: 85 },
+      httpSource: { label: 'HTTP Endpoint', url: 'http://localhost:5000/api/telemetry' },
+      simulatorSource: { label: 'Mock Sensor', deviceId: `device-${nodeCounter}`, sensorType: 'temperature' },
     };
     setNodes((nds) => [...nds, { id: `${nodeCounter++}`, type, position, data: defaults[type] }]);
   }, []);
@@ -92,14 +96,22 @@ export default function Canvas() {
       {/* Sidebar */}
       <div style={styles.sidebar}>
         <p style={styles.sidebarTitle}>Nodes</p>
-        {['sensor', 'filter', 'alert'].map((type) => (
-          <div
-            key={type}
-            draggable
-            onDragStart={(e) => e.dataTransfer.setData('nodeType', type)}
-            style={styles.sidebarItem}
-          >
-            {type === 'sensor' ? '📡 Sensor' : type === 'filter' ? '⚙️ Filter' : '🚨 Alert'}
+        <p style={styles.sectionLabel}>Data Sources</p>
+        {[{ type: 'sensor', label: '📡 Sensor' }, { type: 'httpSource', label: '🌐 HTTP Source' }, { type: 'simulatorSource', label: '🤖 Simulator' }].map(({ type, label }) => (
+          <div key={type} draggable onDragStart={(e) => e.dataTransfer.setData('nodeType', type)} style={styles.sidebarItem}>
+            {label}
+          </div>
+        ))}
+        <p style={styles.sectionLabel}>Operations</p>
+        {[{ type: 'filter', label: '⚙️ Filter' }].map(({ type, label }) => (
+          <div key={type} draggable onDragStart={(e) => e.dataTransfer.setData('nodeType', type)} style={styles.sidebarItem}>
+            {label}
+          </div>
+        ))}
+        <p style={styles.sectionLabel}>Actions</p>
+        {[{ type: 'alert', label: '🚨 Alert' }].map(({ type, label }) => (
+          <div key={type} draggable onDragStart={(e) => e.dataTransfer.setData('nodeType', type)} style={styles.sidebarItem}>
+            {label}
           </div>
         ))}
         <button style={styles.resetBtn} onClick={() => {
@@ -136,4 +148,5 @@ const styles = {
     cursor: 'grab', width: '100%', textAlign: 'center', fontSize: 12, border: '1px solid #30363d' },
   resetBtn: { marginTop: 'auto', background: '#3d1f1f', color: '#f85149', border: '1px solid #f85149',
     borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, width: '100%' },
+  sectionLabel: { color: '#8b949e', fontSize: 10, textTransform: 'uppercase', margin: '8px 0 2px', alignSelf: 'flex-start', paddingLeft: 4 },
 };
