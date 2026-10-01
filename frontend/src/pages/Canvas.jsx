@@ -6,8 +6,11 @@ import FilterNode from '../nodes/FilterNode';
 import AlertNode from '../nodes/AlertNode';
 import HttpSourceNode from '../nodes/HttpSourceNode';
 import SimulatorSourceNode from '../nodes/SimulatorSourceNode';
+import MultiplyNode from '../nodes/MultiplyNode';
+import AddNode from '../nodes/AddNode';
+import MovingAverageNode from '../nodes/MovingAverageNode';
 
-const nodeTypes = { sensor: SensorNode, filter: FilterNode, alert: AlertNode, httpSource: HttpSourceNode, simulatorSource: SimulatorSourceNode };
+const nodeTypes = { sensor: SensorNode, filter: FilterNode, alert: AlertNode, httpSource: HttpSourceNode, simulatorSource: SimulatorSourceNode, multiply: MultiplyNode, add: AddNode, movingAverage: MovingAverageNode };
 
 const STORAGE_KEY = 'nexusflow_graph';
 
@@ -60,8 +63,12 @@ export default function Canvas() {
         nds.map((node) => {
           if ((node.type === 'sensor' || node.type === 'simulatorSource' || node.type === 'httpSource') && node.data.deviceId === deviceId)
             return { ...node, data: { ...node.data, value } };
-          if (node.type === 'filter')
+          if (node.type === 'filter' || node.type === 'movingAverage')
             return { ...node, data: { ...node.data, avg } };
+          if (node.type === 'multiply')
+            return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)) } };
+          if (node.type === 'add')
+            return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)) } };
           if (node.type === 'alert')
             return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85) } };
           return node;
@@ -87,6 +94,9 @@ export default function Canvas() {
       alert: { label: 'SMS Alert', threshold: 85 },
       httpSource: { label: 'HTTP Endpoint', url: 'http://localhost:5000/api/telemetry' },
       simulatorSource: { label: 'Mock Sensor', deviceId: `device-${nodeCounter}`, sensorType: 'temperature' },
+      multiply: { label: 'Multiply', operand: 1.8 },
+      add: { label: 'Add Offset', operand: 32 },
+      movingAverage: { label: 'Moving Average', windowSize: 5 },
     };
     setNodes((nds) => [...nds, { id: `${nodeCounter++}`, type, position, data: defaults[type] }]);
   }, []);
@@ -103,7 +113,7 @@ export default function Canvas() {
           </div>
         ))}
         <p style={styles.sectionLabel}>Operations</p>
-        {[{ type: 'filter', label: '⚙️ Filter' }].map(({ type, label }) => (
+        {[{ type: 'movingAverage', label: '📊 Moving Avg' }, { type: 'multiply', label: '✖️ Multiply' }, { type: 'add', label: '➕ Add' }, { type: 'filter', label: '⚙️ Filter' }].map(({ type, label }) => (
           <div key={type} draggable onDragStart={(e) => e.dataTransfer.setData('nodeType', type)} style={styles.sidebarItem}>
             {label}
           </div>
