@@ -48,11 +48,11 @@ function compileGraph(graph, wss) {
     const nextNode = nodes.find((n) => n.id === nextId);
     if (!nextNode) break;
 
-    if (nextNode.type === 'filter' || nextNode.type === 'mathOperation') {
+    if (['filter', 'mathOperation', 'movingAverage', 'multiply', 'add'].includes(nextNode.type)) {
       stream = applyMathOperation(stream, nextNode);
     }
 
-    if (nextNode.type === 'alert') {
+    if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(nextNode.type)) {
       const alertNode = nextNode;
       stream = stream.pipe(
         map((value) => {
