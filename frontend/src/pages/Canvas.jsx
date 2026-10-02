@@ -9,8 +9,11 @@ import SimulatorSourceNode from '../nodes/SimulatorSourceNode';
 import MultiplyNode from '../nodes/MultiplyNode';
 import AddNode from '../nodes/AddNode';
 import MovingAverageNode from '../nodes/MovingAverageNode';
+import SmsAlertNode from '../nodes/SmsAlertNode';
+import EmailAlertNode from '../nodes/EmailAlertNode';
+import LogAlertNode from '../nodes/LogAlertNode';
 
-const nodeTypes = { sensor: SensorNode, filter: FilterNode, alert: AlertNode, httpSource: HttpSourceNode, simulatorSource: SimulatorSourceNode, multiply: MultiplyNode, add: AddNode, movingAverage: MovingAverageNode };
+const nodeTypes = { sensor: SensorNode, filter: FilterNode, alert: AlertNode, httpSource: HttpSourceNode, simulatorSource: SimulatorSourceNode, multiply: MultiplyNode, add: AddNode, movingAverage: MovingAverageNode, smsAlert: SmsAlertNode, emailAlert: EmailAlertNode, logAlert: LogAlertNode };
 
 const STORAGE_KEY = 'nexusflow_graph';
 
@@ -69,7 +72,7 @@ export default function Canvas() {
             return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)) } };
           if (node.type === 'add')
             return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)) } };
-          if (node.type === 'alert')
+          if (node.type === 'alert' || node.type === 'smsAlert' || node.type === 'emailAlert' || node.type === 'logAlert')
             return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85) } };
           return node;
         })
@@ -97,6 +100,9 @@ export default function Canvas() {
       multiply: { label: 'Multiply', operand: 1.8 },
       add: { label: 'Add Offset', operand: 32 },
       movingAverage: { label: 'Moving Average', windowSize: 5 },
+      smsAlert: { label: 'SMS Alert', threshold: 85, actionType: 'sms' },
+      emailAlert: { label: 'Email Alert', threshold: 85, actionType: 'email' },
+      logAlert: { label: 'Log Alert', threshold: 85, actionType: 'log' },
     };
     setNodes((nds) => [...nds, { id: `${nodeCounter++}`, type, position, data: defaults[type] }]);
   }, []);
@@ -119,11 +125,19 @@ export default function Canvas() {
           </div>
         ))}
         <p style={styles.sectionLabel}>Actions</p>
-        {[{ type: 'alert', label: '🚨 Alert' }].map(({ type, label }) => (
+        {[{ type: 'smsAlert', label: '📱 SMS Alert' }, { type: 'emailAlert', label: '📧 Email Alert' }, { type: 'logAlert', label: '📝 Log Alert' }, { type: 'alert', label: '🚨 Alert' }].map(({ type, label }) => (
           <div key={type} draggable onDragStart={(e) => e.dataTransfer.setData('nodeType', type)} style={styles.sidebarItem}>
             {label}
           </div>
         ))}
+        <button style={styles.compileBtn} onClick={async () => {
+          await fetch('http://localhost:5000/api/compile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nodes, edges }),
+          });
+          alert('Graph compiled!');
+        }}>▶ Compile</button>
         <button style={styles.resetBtn} onClick={() => {
           localStorage.removeItem(STORAGE_KEY);
           setNodes(defaultNodes);
@@ -156,7 +170,9 @@ const styles = {
   sidebarTitle: { color: '#8b949e', fontSize: 11, textTransform: 'uppercase', margin: '0 0 4px' },
   sidebarItem: { background: '#21262d', color: '#c9d1d9', padding: '8px 12px', borderRadius: 6,
     cursor: 'grab', width: '100%', textAlign: 'center', fontSize: 12, border: '1px solid #30363d' },
-  resetBtn: { marginTop: 'auto', background: '#3d1f1f', color: '#f85149', border: '1px solid #f85149',
+  compileBtn: { background: '#0f3d1f', color: '#4ade80', border: '1px solid #16a34a',
+    borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, width: '100%', marginTop: 'auto' },
+  resetBtn: { background: '#3d1f1f', color: '#f85149', border: '1px solid #f85149',
     borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, width: '100%' },
   sectionLabel: { color: '#8b949e', fontSize: 10, textTransform: 'uppercase', margin: '8px 0 2px', alignSelf: 'flex-start', paddingLeft: 4 },
 };
