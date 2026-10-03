@@ -138,6 +138,14 @@ export default function Canvas() {
           });
           alert('Graph compiled!');
         }}>▶ Compile</button>
+        <button style={styles.exportBtn} onClick={() => {
+          const json = JSON.stringify({ nodes, edges }, null, 2);
+          const blob = new Blob([json], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'nexusflow-graph.json'; a.click();
+          URL.revokeObjectURL(url);
+        }}>⬇ Export JSON</button>
         <button style={styles.resetBtn} onClick={() => {
           localStorage.removeItem(STORAGE_KEY);
           setNodes(defaultNodes);
@@ -172,6 +180,8 @@ const styles = {
     cursor: 'grab', width: '100%', textAlign: 'center', fontSize: 12, border: '1px solid #30363d' },
   compileBtn: { background: '#0f3d1f', color: '#4ade80', border: '1px solid #16a34a',
     borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, width: '100%', marginTop: 'auto' },
+  exportBtn: { background: '#1f2d3d', color: '#38bdf8', border: '1px solid #0ea5e9',
+    borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, width: '100%' },
   resetBtn: { background: '#3d1f1f', color: '#f85149', border: '1px solid #f85149',
     borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, width: '100%' },
   sectionLabel: { color: '#8b949e', fontSize: 10, textTransform: 'uppercase', margin: '8px 0 2px', alignSelf: 'flex-start', paddingLeft: 4 },
