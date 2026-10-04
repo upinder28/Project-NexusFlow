@@ -35,7 +35,7 @@ function compileGraph(graph, wss) {
     edgeMap[source] = target;
   });
 
-  const sensorNode = nodes.find((n) => n.type === 'sensor');
+  const sensorNode = nodes.find((n) => n.type === 'sensor' || n.type === 'simulatorSource' || n.type === 'httpSource');
   if (!sensorNode) throw new Error('No sensor node found in graph');
 
   const deviceId = sensorNode.data.deviceId || 'device-1';
