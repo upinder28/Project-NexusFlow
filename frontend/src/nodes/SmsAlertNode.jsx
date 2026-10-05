@@ -1,45 +1,45 @@
 import { Handle, Position } from 'reactflow';
 
 export default function SmsAlertNode({ data }) {
+  const triggered = !!data.triggered;
   return (
-    <div style={s.node}>
-      <div style={s.header}>
-        <span style={s.icon}>📱</span>
-        <span style={s.title}>SMS Alert</span>
-        <span style={s.badge}>ACTION</span>
+    <div style={{ ...s.node, borderColor: triggered ? '#fb7185' : '#4a1a1a' }}>
+      <div style={s.top}>
+        <div style={{ ...s.iconWrap, background: triggered ? '#fb718520' : '#fb718510' }}>📱</div>
+        <div>
+          <div style={s.type}>SMS Alert</div>
+          <div style={s.label}>{data.label || 'SMS Alert'}</div>
+        </div>
+        <div style={s.badge}>ACTION</div>
       </div>
-      <p style={s.label}>{data.label || 'SMS Alert'}</p>
-      <div style={s.valueBox}>
-        <span style={s.valueNum}>{data.avg !== undefined ? data.avg : '--'}</span>
+      <div style={s.divider} />
+      <div style={s.valueRow}>
+        <span style={s.value}>{data.avg !== undefined ? data.avg : '—'}</span>
       </div>
-      <p style={s.meta}>Threshold: {data.threshold ?? 70}</p>
-      <div style={{ ...s.status, background: data.triggered ? '#f8514922' : '#3fb95022', border: `1px solid ${data.triggered ? '#f85149' : '#3fb950'}` }}>
-        <span style={{ ...s.statusDot, background: data.triggered ? '#f85149' : '#3fb950' }} />
-        <span style={{ color: data.triggered ? '#f85149' : '#3fb950', fontSize: 11, fontWeight: 600 }}>
-          {data.triggered ? 'SMS SENT' : 'Standby'}
+      <div style={s.meta}>threshold: {data.threshold ?? 85}</div>
+      <div style={{ ...s.status, background: triggered ? '#fb718518' : '#34d39910', borderColor: triggered ? '#fb7185' : '#34d399' }}>
+        <span style={{ ...s.dot, background: triggered ? '#fb7185' : '#34d399' }} />
+        <span style={{ color: triggered ? '#fb7185' : '#34d399', fontSize: 11, fontWeight: 600 }}>
+          {triggered ? 'SMS SENT' : 'Standby'}
         </span>
       </div>
-      <Handle type="target" position={Position.Left} style={s.handle} />
+      <Handle type="target" position={Position.Left} style={{ ...s.handle, background: triggered ? '#fb7185' : '#34d399' }} />
     </div>
   );
 }
 
 const s = {
-  node: {
-    background: 'linear-gradient(145deg, #2a0d0d, #1a0808)',
-    border: '1px solid #dc2626', borderRadius: 12, padding: '12px 14px',
-    minWidth: 160, fontFamily: 'Inter, sans-serif',
-    boxShadow: '0 0 0 1px #dc262622, 0 4px 20px #dc262618',
-  },
-  header: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 },
-  icon: { fontSize: 14 },
-  title: { fontSize: 12, fontWeight: 700, color: '#e6edf3', flex: 1 },
-  badge: { fontSize: 8, fontWeight: 700, color: '#fca5a5', background: '#dc262622', padding: '2px 5px', borderRadius: 4, letterSpacing: '0.5px' },
-  label: { fontSize: 11, color: '#8b949e', marginBottom: 8 },
-  valueBox: { marginBottom: 4 },
-  valueNum: { fontSize: 26, fontWeight: 700, color: '#f87171', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
-  meta: { fontSize: 10, color: '#6e7681', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 },
-  status: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 6 },
-  statusDot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0 },
-  handle: { background: '#f87171', border: '2px solid #0d1117', width: 10, height: 10 },
+  node: { background: '#150a0a', border: '1px solid', borderRadius: 12, padding: '12px 14px', minWidth: 170, fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 24px #fb718510', transition: 'border-color 0.3s' },
+  top: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 },
+  iconWrap: { fontSize: 16, width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.3s' },
+  type: { fontSize: 9, fontWeight: 700, color: '#fb7185', textTransform: 'uppercase', letterSpacing: '1px' },
+  label: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
+  badge: { marginLeft: 'auto', fontSize: 8, fontWeight: 700, color: '#fb7185', background: '#fb718510', border: '1px solid #fb718520', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.5px' },
+  divider: { height: 1, background: '#ffffff08', marginBottom: 10 },
+  valueRow: { marginBottom: 4 },
+  value: { fontSize: 28, fontWeight: 700, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
+  meta: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 },
+  status: { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 7, border: '1px solid', transition: 'all 0.3s' },
+  dot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0, transition: 'background 0.3s' },
+  handle: { border: '2px solid #06080f', width: 10, height: 10 },
 };

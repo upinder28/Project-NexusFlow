@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactFlow, {
   addEdge, Background, Controls, MiniMap,
-  useNodesState, useEdgesState, MarkerType,
+  useNodesState, useEdgesState, MarkerType, BackgroundVariant,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import SensorNode from '../nodes/SensorNode';
@@ -26,13 +26,13 @@ const nodeTypes = {
 const STORAGE_KEY = 'nexusflow_graph';
 
 const defaultNodes = [
-  { id: '1', type: 'sensor', position: { x: 80, y: 180 }, data: { label: 'Turbine Sensor', deviceId: 'device-1' } },
-  { id: '2', type: 'movingAverage', position: { x: 320, y: 180 }, data: { label: 'Moving Average', windowSize: 5 } },
-  { id: '3', type: 'smsAlert', position: { x: 560, y: 180 }, data: { label: 'SMS Alert', threshold: 85, actionType: 'sms' } },
+  { id: '1', type: 'sensor', position: { x: 80, y: 200 }, data: { label: 'Turbine Sensor', deviceId: 'device-1' } },
+  { id: '2', type: 'movingAverage', position: { x: 340, y: 200 }, data: { label: 'Moving Average', windowSize: 5 } },
+  { id: '3', type: 'smsAlert', position: { x: 600, y: 200 }, data: { label: 'SMS Alert', threshold: 85, actionType: 'sms' } },
 ];
 const defaultEdges = [
-  { id: 'e1-2', source: '1', target: '2', animated: true, style: { stroke: '#58a6ff' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#58a6ff' } },
-  { id: 'e2-3', source: '2', target: '3', animated: true, style: { stroke: '#3fb950' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#3fb950' } },
+  { id: 'e1-2', source: '1', target: '2', animated: true, style: { stroke: '#58a6ff', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#58a6ff' } },
+  { id: 'e2-3', source: '2', target: '3', animated: true, style: { stroke: '#a78bfa', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#a78bfa' } },
 ];
 
 function loadGraph() {
@@ -46,40 +46,43 @@ let nodeCounter = 10;
 
 const SIDEBAR_SECTIONS = [
   {
-    label: 'Data Sources',
-    color: '#58a6ff',
+    label: 'Sources',
+    color: '#38bdf8',
+    bg: 'rgba(56,189,248,0.08)',
     items: [
-      { type: 'sensor', label: 'Sensor', icon: '📡' },
-      { type: 'httpSource', label: 'HTTP Source', icon: '🌐' },
-      { type: 'simulatorSource', label: 'Simulator', icon: '🤖' },
+      { type: 'sensor', label: 'Sensor', icon: '📡', desc: 'Hardware sensor' },
+      { type: 'simulatorSource', label: 'Simulator', icon: '🤖', desc: 'Mock data stream' },
+      { type: 'httpSource', label: 'HTTP', icon: '🌐', desc: 'REST endpoint' },
     ],
   },
   {
     label: 'Operations',
-    color: '#bc8cff',
+    color: '#a78bfa',
+    bg: 'rgba(167,139,250,0.08)',
     items: [
-      { type: 'movingAverage', label: 'Moving Avg', icon: '📊' },
-      { type: 'multiply', label: 'Multiply', icon: '✖️' },
-      { type: 'add', label: 'Add Offset', icon: '➕' },
-      { type: 'filter', label: 'Filter', icon: '⚙️' },
+      { type: 'movingAverage', label: 'Moving Avg', icon: '〰️', desc: 'Smooth values' },
+      { type: 'multiply', label: 'Multiply', icon: '✕', desc: 'Scale values' },
+      { type: 'add', label: 'Add', icon: '+', desc: 'Offset values' },
+      { type: 'filter', label: 'Filter', icon: '▽', desc: 'Threshold filter' },
     ],
   },
   {
     label: 'Actions',
-    color: '#f85149',
+    color: '#fb7185',
+    bg: 'rgba(251,113,133,0.08)',
     items: [
-      { type: 'smsAlert', label: 'SMS Alert', icon: '📱' },
-      { type: 'emailAlert', label: 'Email Alert', icon: '📧' },
-      { type: 'logAlert', label: 'Log Alert', icon: '📝' },
-      { type: 'alert', label: 'Alert', icon: '🚨' },
+      { type: 'smsAlert', label: 'SMS Alert', icon: '📱', desc: 'Send SMS' },
+      { type: 'emailAlert', label: 'Email', icon: '📧', desc: 'Send email' },
+      { type: 'logAlert', label: 'Log', icon: '📋', desc: 'Log event' },
+      { type: 'alert', label: 'Alert', icon: '🔔', desc: 'Generic alert' },
     ],
   },
 ];
 
 const NODE_DEFAULTS = {
   sensor: { label: 'New Sensor', deviceId: `device-${nodeCounter}` },
-  filter: { label: 'Moving Average' },
-  alert: { label: 'SMS Alert', threshold: 85 },
+  filter: { label: 'Filter' },
+  alert: { label: 'Alert', threshold: 85 },
   httpSource: { label: 'HTTP Endpoint', url: 'http://localhost:5000/api/telemetry' },
   simulatorSource: { label: 'Mock Sensor', deviceId: `device-${nodeCounter}`, sensorType: 'temperature' },
   multiply: { label: 'Multiply', operand: 1.8 },
@@ -90,7 +93,7 @@ const NODE_DEFAULTS = {
   logAlert: { label: 'Log Alert', threshold: 85, actionType: 'log' },
 };
 
-const EDGE_COLORS = ['#58a6ff', '#3fb950', '#bc8cff', '#d29922', '#39d353', '#f85149'];
+const EDGE_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#fbbf24', '#60a5fa'];
 
 export default function Canvas() {
   const saved = loadGraph();
@@ -107,8 +110,7 @@ export default function Canvas() {
   const onConnect = useCallback((params) => {
     const color = EDGE_COLORS[Math.floor(Math.random() * EDGE_COLORS.length)];
     setEdges((eds) => addEdge({
-      ...params,
-      animated: true,
+      ...params, animated: true,
       style: { stroke: color, strokeWidth: 2 },
       markerEnd: { type: MarkerType.ArrowClosed, color },
     }, eds));
@@ -118,12 +120,8 @@ export default function Canvas() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
   }, [nodes, edges]);
 
-  // Data rate counter
   useEffect(() => {
-    const interval = setInterval(() => {
-      setDataRate(rateRef.current);
-      rateRef.current = 0;
-    }, 1000);
+    const interval = setInterval(() => { setDataRate(rateRef.current); rateRef.current = 0; }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -132,45 +130,37 @@ export default function Canvas() {
     ws.onopen = () => setWsStatus('live');
     ws.onclose = () => setWsStatus('offline');
     ws.onerror = () => setWsStatus('offline');
-
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
       if (data.type === 'alert' || data.type === 'compiled') return;
-
       const { metadata, value } = data;
       const deviceId = metadata?.deviceId;
       if (!deviceId || value === undefined) return;
       rateRef.current += 1;
       setTotalPoints((p) => p + 1);
-
       if (!valuesRef.current[deviceId]) valuesRef.current[deviceId] = [];
       const buf = valuesRef.current[deviceId];
       buf.push(value);
       if (buf.length > 5) buf.shift();
       const avg = parseFloat((buf.reduce((a, b) => a + b, 0) / buf.length).toFixed(2));
-
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (['sensor', 'simulatorSource', 'httpSource'].includes(node.type) && node.data.deviceId === deviceId)
-            return { ...node, data: { ...node.data, value } };
-          if (['filter', 'movingAverage'].includes(node.type))
-            return { ...node, data: { ...node.data, avg } };
-          if (node.type === 'multiply')
-            return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)) } };
-          if (node.type === 'add')
-            return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)) } };
-          if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(node.type))
-            return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85) } };
-          return node;
-        })
-      );
+      setNodes((nds) => nds.map((node) => {
+        if (['sensor', 'simulatorSource', 'httpSource'].includes(node.type) && node.data.deviceId === deviceId)
+          return { ...node, data: { ...node.data, value } };
+        if (['filter', 'movingAverage'].includes(node.type))
+          return { ...node, data: { ...node.data, avg } };
+        if (node.type === 'multiply')
+          return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)) } };
+        if (node.type === 'add')
+          return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)) } };
+        if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(node.type))
+          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85) } };
+        return node;
+      }));
     };
-
     return () => ws.close();
   }, []);
 
   const onDragOver = useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []);
-
   const onDrop = useCallback((e) => {
     e.preventDefault();
     const type = e.dataTransfer.getData('nodeType');
@@ -180,11 +170,15 @@ export default function Canvas() {
     setNodes((nds) => [...nds, { id: `${nodeCounter++}`, type, position, data: { ...NODE_DEFAULTS[type] } }]);
   }, []);
 
+  const addNode = useCallback((type) => {
+    const position = { x: 120 + Math.random() * 280, y: 120 + Math.random() * 180 };
+    setNodes((nds) => [...nds, { id: `${nodeCounter++}`, type, position, data: { ...NODE_DEFAULTS[type] } }]);
+  }, []);
+
   const handleCompile = async () => {
     try {
       const res = await fetch('http://localhost:5000/api/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodes, edges }),
       });
       if (res.ok) setCompiled(true);
@@ -192,8 +186,7 @@ export default function Canvas() {
   };
 
   const handleExport = () => {
-    const json = JSON.stringify({ nodes, edges }, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ nodes, edges }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'nexusflow-graph.json'; a.click();
@@ -202,84 +195,114 @@ export default function Canvas() {
 
   const handleReset = () => {
     localStorage.removeItem(STORAGE_KEY);
-    setNodes(defaultNodes);
-    setEdges(defaultEdges);
-    setCompiled(false);
+    setNodes(defaultNodes); setEdges(defaultEdges); setCompiled(false);
   };
+
+  const isLive = wsStatus === 'live';
 
   return (
     <div style={s.root}>
-      {/* Header */}
-      <header style={s.header}>
-        <div style={s.headerLeft}>
-          <span style={s.logo}>⚡ NexusFlow</span>
-          <span style={s.tagline}>Visual IoT Rule Engine</span>
+
+      {/* ── TOP NAV ── */}
+      <nav style={s.nav}>
+        <div style={s.navLeft}>
+          <div style={s.logoWrap}>
+            <span style={s.logoIcon}>⚡</span>
+            <span style={s.logoText}>NexusFlow</span>
+          </div>
+          <div style={s.divider} />
+          <span style={s.navSub}>IoT Rule Engine</span>
         </div>
-        <div style={s.stats}>
-          <StatPill icon="🔴" label="WebSocket" value={wsStatus} color={wsStatus === 'live' ? '#3fb950' : '#f85149'} pulse={wsStatus === 'live'} />
-          <StatPill icon="📈" label="Data Rate" value={`${dataRate} pts/s`} color="#58a6ff" />
-          <StatPill icon="🗄️" label="Total Points" value={totalPoints.toLocaleString()} color="#bc8cff" />
-          <StatPill icon="🔷" label="Nodes" value={nodes.length} color="#d29922" />
+
+        <div style={s.navCenter}>
+          <div style={{ ...s.statusBadge, borderColor: isLive ? '#34d39944' : '#f8514944', background: isLive ? '#34d39910' : '#f8514910' }}>
+            <span style={{ ...s.statusDot, background: isLive ? '#34d399' : '#f85149', boxShadow: isLive ? '0 0 6px #34d399' : 'none' }} />
+            <span style={{ color: isLive ? '#34d399' : '#f85149', fontSize: 11, fontWeight: 600 }}>
+              {isLive ? 'Live' : 'Offline'}
+            </span>
+          </div>
+          <div style={s.statChip}>
+            <span style={s.statVal}>{dataRate}</span>
+            <span style={s.statLbl}>pts/s</span>
+          </div>
+          <div style={s.statChip}>
+            <span style={s.statVal}>{totalPoints.toLocaleString()}</span>
+            <span style={s.statLbl}>total</span>
+          </div>
+          <div style={s.statChip}>
+            <span style={s.statVal}>{nodes.length}</span>
+            <span style={s.statLbl}>nodes</span>
+          </div>
         </div>
-        <div style={s.headerRight}>
-          <button style={s.btnCompile} onClick={handleCompile}>
-            {compiled ? '✅ Compiled' : '▶ Compile Graph'}
+
+        <div style={s.navRight}>
+          <button style={s.btnGhost} onClick={() => setLocked(l => !l)}>
+            {locked ? '🔒' : '🔓'} {locked ? 'Locked' : 'Unlocked'}
           </button>
-          <button style={s.btnExport} onClick={handleExport}>⬇ Export JSON</button>
-          <button style={s.btnReset} onClick={handleReset}>↺ Reset</button>
-          <button style={{ ...s.btnExport, borderColor: locked ? '#f85149' : '#30363d', color: locked ? '#f85149' : '#8b949e' }} onClick={() => setLocked(l => !l)}>
-            {locked ? '🔒 Locked' : '🔓 Unlock'}
+          <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
+          <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
+          <button style={{ ...s.btnPrimary, ...(compiled ? s.btnSuccess : {}) }} onClick={handleCompile}>
+            {compiled ? '✓ Compiled' : '▶ Compile'}
           </button>
         </div>
-      </header>
+      </nav>
 
       <div style={s.body}>
-        {/* Sidebar */}
+
+        {/* ── SIDEBAR ── */}
         <aside style={s.sidebar}>
-          <p style={s.sidebarHint}>Drag nodes onto canvas</p>
-          {SIDEBAR_SECTIONS.map((section) => (
-            <div key={section.label} style={s.section}>
-              <p style={{ ...s.sectionLabel, color: section.color }}>{section.label}</p>
-              {section.items.map(({ type, label, icon }) => (
+          {SIDEBAR_SECTIONS.map((sec) => (
+            <div key={sec.label} style={s.secWrap}>
+              <div style={s.secHead}>
+                <span style={{ ...s.secDot, background: sec.color }} />
+                <span style={{ ...s.secLabel, color: sec.color }}>{sec.label}</span>
+              </div>
+              {sec.items.map(({ type, label, icon, desc }) => (
                 <div
                   key={type}
                   draggable
+                  onClick={() => addNode(type)}
                   onDragStart={(e) => e.dataTransfer.setData('nodeType', type)}
-                  style={s.sidebarItem}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#21262d'; e.currentTarget.style.borderColor = section.color; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = '#161b22'; e.currentTarget.style.borderColor = '#30363d'; }}
+                  style={s.nodeCard}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = sec.bg;
+                    e.currentTarget.style.borderColor = sec.color + '66';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = '#ffffff0d';
+                  }}
                 >
-                  <span style={s.itemIcon}>{icon}</span>
-                  <span style={s.itemLabel}>{label}</span>
+                  <div style={{ ...s.nodeCardIcon, background: sec.bg, color: sec.color }}>{icon}</div>
+                  <div style={s.nodeCardText}>
+                    <span style={s.nodeCardLabel}>{label}</span>
+                    <span style={s.nodeCardDesc}>{desc}</span>
+                  </div>
                 </div>
               ))}
             </div>
           ))}
         </aside>
 
-        {/* Canvas */}
+        {/* ── CANVAS ── */}
         <div style={s.canvas} onDrop={onDrop} onDragOver={onDragOver}>
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            nodeTypes={nodeTypes}
-            fitView
+            nodes={nodes} edges={edges}
+            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+            onConnect={onConnect} nodeTypes={nodeTypes}
+            fitView nodesDraggable={!locked} nodesFocusable={!locked}
             defaultEdgeOptions={{ animated: true }}
-            nodesDraggable={!locked}
-            nodesFocusable={!locked}
           >
-            <Background color="#1c2128" gap={24} size={1.5} />
-            <Controls />
+            <Background variant={BackgroundVariant.Dots} color="#ffffff08" gap={20} size={1} />
+            <Controls style={{ bottom: 24, left: 24 }} />
             <MiniMap
+              style={{ bottom: 24, right: 24, borderRadius: 10, border: '1px solid #ffffff10' }}
               nodeColor={(n) => {
-                if (['sensor','simulatorSource','httpSource'].includes(n.type)) return '#1f6feb';
-                if (['movingAverage','multiply','add','filter'].includes(n.type)) return '#7c3aed';
-                return '#b91c1c';
+                if (['sensor', 'simulatorSource', 'httpSource'].includes(n.type)) return '#38bdf8';
+                if (['movingAverage', 'multiply', 'add', 'filter'].includes(n.type)) return '#a78bfa';
+                return '#fb7185';
               }}
-              maskColor="rgba(6,9,16,0.7)"
+              maskColor="rgba(6,8,15,0.75)"
             />
           </ReactFlow>
         </div>
@@ -288,69 +311,65 @@ export default function Canvas() {
   );
 }
 
-function StatPill({ icon, label, value, color, pulse }) {
-  return (
-    <div style={{ ...s.pill, borderColor: color + '44' }}>
-      <span style={{ ...s.pillDot, background: color, animation: pulse ? 'pulse-ring 1.5s infinite' : 'none' }} />
-      <span style={s.pillLabel}>{label}</span>
-      <span style={{ ...s.pillValue, color }}>{value}</span>
-    </div>
-  );
-}
-
 const s = {
-  root: { display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#060910', fontFamily: 'Inter, sans-serif' },
+  root: { display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#06080f', fontFamily: 'Inter, sans-serif', overflow: 'hidden' },
 
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0 20px', height: 56, background: '#0d1117',
-    borderBottom: '1px solid #21262d', flexShrink: 0, gap: 16,
+  nav: {
+    height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '0 16px', background: '#0a0d16',
+    borderBottom: '1px solid #ffffff0f', flexShrink: 0, gap: 12,
   },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 },
-  logo: { fontSize: 18, fontWeight: 700, color: '#e6edf3', letterSpacing: '-0.3px' },
-  tagline: { fontSize: 11, color: '#6e7681', fontWeight: 400, borderLeft: '1px solid #30363d', paddingLeft: 12 },
+  navLeft: { display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 },
+  logoWrap: { display: 'flex', alignItems: 'center', gap: 7 },
+  logoIcon: { fontSize: 18 },
+  logoText: { fontSize: 15, fontWeight: 700, color: '#f0f6fc', letterSpacing: '-0.4px' },
+  divider: { width: 1, height: 18, background: '#ffffff15' },
+  navSub: { fontSize: 11, color: '#6e7681', fontWeight: 400 },
 
-  stats: { display: 'flex', gap: 8, flex: 1, justifyContent: 'center' },
-  pill: {
-    display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
-    background: '#161b22', border: '1px solid', borderRadius: 20, fontSize: 11,
-  },
-  pillDot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0 },
-  pillLabel: { color: '#6e7681', fontWeight: 500 },
-  pillValue: { fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' },
+  navCenter: { display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' },
+  statusBadge: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid', borderRadius: 20 },
+  statusDot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0 },
+  statChip: { display: 'flex', alignItems: 'baseline', gap: 4, padding: '3px 10px', background: '#ffffff06', border: '1px solid #ffffff0a', borderRadius: 8 },
+  statVal: { fontSize: 13, fontWeight: 700, color: '#e6edf3', fontFamily: 'JetBrains Mono, monospace' },
+  statLbl: { fontSize: 10, color: '#6e7681', fontWeight: 500 },
 
-  headerRight: { display: 'flex', gap: 8, flexShrink: 0 },
-  btnCompile: {
-    background: 'linear-gradient(135deg, #0f3d1f, #166534)', color: '#4ade80',
-    border: '1px solid #16a34a', borderRadius: 8, padding: '6px 14px',
-    cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'Inter, sans-serif',
+  navRight: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
+  btnGhost: {
+    background: 'transparent', color: '#8b949e', border: '1px solid #ffffff12',
+    borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 11,
+    fontWeight: 500, fontFamily: 'Inter, sans-serif', transition: 'all 0.15s',
   },
-  btnExport: {
-    background: '#161b22', color: '#58a6ff', border: '1px solid #1f6feb',
-    borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 500, fontFamily: 'Inter, sans-serif',
+  btnPrimary: {
+    background: 'linear-gradient(135deg, #1a3a5c, #1e4976)', color: '#58a6ff',
+    border: '1px solid #1f6feb', borderRadius: 7, padding: '5px 14px',
+    cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'Inter, sans-serif',
   },
-  btnReset: {
-    background: '#161b22', color: '#f85149', border: '1px solid #6e1a1a',
-    borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 500, fontFamily: 'Inter, sans-serif',
+  btnSuccess: {
+    background: 'linear-gradient(135deg, #0f2d1a, #14532d)', color: '#34d399',
+    border: '1px solid #16a34a',
   },
 
   body: { display: 'flex', flex: 1, overflow: 'hidden' },
 
   sidebar: {
-    width: 160, background: '#0d1117', borderRight: '1px solid #21262d',
-    padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 4,
+    width: 200, background: '#0a0d16', borderRight: '1px solid #ffffff0a',
+    padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4,
     overflowY: 'auto', flexShrink: 0,
   },
-  sidebarHint: { fontSize: 10, color: '#6e7681', textAlign: 'center', marginBottom: 8, letterSpacing: '0.5px' },
-  section: { marginBottom: 8 },
-  sectionLabel: { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', padding: '4px 6px 6px' },
-  sidebarItem: {
-    display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
-    background: '#161b22', border: '1px solid #30363d', borderRadius: 8,
-    cursor: 'grab', marginBottom: 4, transition: 'all 0.15s ease',
+  secWrap: { marginBottom: 16 },
+  secHead: { display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px 8px', borderBottom: '1px solid #ffffff08', marginBottom: 6 },
+  secDot: { width: 5, height: 5, borderRadius: '50%', flexShrink: 0 },
+  secLabel: { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.2px' },
+
+  nodeCard: {
+    display: 'flex', alignItems: 'center', gap: 9, padding: '8px 8px',
+    background: 'transparent', border: '1px solid #ffffff0d', borderRadius: 9,
+    cursor: 'pointer', marginBottom: 4, transition: 'all 0.15s ease',
   },
-  itemIcon: { fontSize: 14, flexShrink: 0 },
-  itemLabel: { fontSize: 11, color: '#c9d1d9', fontWeight: 500 },
+  nodeCardIcon: { width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 },
+  nodeCardText: { display: 'flex', flexDirection: 'column', gap: 1 },
+  nodeCardLabel: { fontSize: 11, color: '#e6edf3', fontWeight: 600 },
+  nodeCardDesc: { fontSize: 9, color: '#6e7681', fontWeight: 400 },
 
   canvas: { flex: 1, position: 'relative' },
 };
