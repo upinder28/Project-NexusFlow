@@ -1,45 +1,45 @@
 import { Handle, Position } from 'reactflow';
 
 export default function LogAlertNode({ data }) {
+  const triggered = !!data.triggered;
   return (
-    <div style={s.node}>
-      <div style={s.header}>
-        <span style={s.icon}>📝</span>
-        <span style={s.title}>Log Alert</span>
-        <span style={s.badge}>ACTION</span>
+    <div style={{ ...s.node, borderColor: triggered ? '#fbbf24' : '#3a2a0a' }}>
+      <div style={s.top}>
+        <div style={{ ...s.iconWrap, background: triggered ? '#fbbf2420' : '#fbbf2410' }}>📋</div>
+        <div>
+          <div style={s.type}>Log Alert</div>
+          <div style={s.label}>{data.label || 'Log Alert'}</div>
+        </div>
+        <div style={s.badge}>ACTION</div>
       </div>
-      <p style={s.label}>{data.label || 'Log Alert'}</p>
-      <div style={s.valueBox}>
-        <span style={s.valueNum}>{data.avg !== undefined ? data.avg : '--'}</span>
+      <div style={s.divider} />
+      <div style={s.valueRow}>
+        <span style={s.value}>{data.avg !== undefined ? data.avg : '—'}</span>
       </div>
-      <p style={s.meta}>Threshold: {data.threshold ?? 70}</p>
-      <div style={{ ...s.status, background: data.triggered ? '#92400e22' : '#3fb95022', border: `1px solid ${data.triggered ? '#d97706' : '#3fb950'}` }}>
-        <span style={{ ...s.statusDot, background: data.triggered ? '#fbbf24' : '#3fb950' }} />
-        <span style={{ color: data.triggered ? '#fbbf24' : '#3fb950', fontSize: 11, fontWeight: 600 }}>
-          {data.triggered ? 'LOGGED' : 'Standby'}
+      <div style={s.meta}>threshold: {data.threshold ?? 85}</div>
+      <div style={{ ...s.status, background: triggered ? '#fbbf2418' : '#34d39910', borderColor: triggered ? '#fbbf24' : '#34d399' }}>
+        <span style={{ ...s.dot, background: triggered ? '#fbbf24' : '#34d399' }} />
+        <span style={{ color: triggered ? '#fbbf24' : '#34d399', fontSize: 11, fontWeight: 600 }}>
+          {triggered ? 'LOGGED' : 'Standby'}
         </span>
       </div>
-      <Handle type="target" position={Position.Left} style={s.handle} />
+      <Handle type="target" position={Position.Left} style={{ ...s.handle, background: triggered ? '#fbbf24' : '#34d399' }} />
     </div>
   );
 }
 
 const s = {
-  node: {
-    background: 'linear-gradient(145deg, #1a1a0a, #121208)',
-    border: '1px solid #ca8a04', borderRadius: 12, padding: '12px 14px',
-    minWidth: 160, fontFamily: 'Inter, sans-serif',
-    boxShadow: '0 0 0 1px #ca8a0422, 0 4px 20px #ca8a0418',
-  },
-  header: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 },
-  icon: { fontSize: 14 },
-  title: { fontSize: 12, fontWeight: 700, color: '#e6edf3', flex: 1 },
-  badge: { fontSize: 8, fontWeight: 700, color: '#fde68a', background: '#ca8a0422', padding: '2px 5px', borderRadius: 4, letterSpacing: '0.5px' },
-  label: { fontSize: 11, color: '#8b949e', marginBottom: 8 },
-  valueBox: { marginBottom: 4 },
-  valueNum: { fontSize: 26, fontWeight: 700, color: '#fbbf24', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
-  meta: { fontSize: 10, color: '#6e7681', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 },
-  status: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 6 },
-  statusDot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0 },
-  handle: { background: '#fbbf24', border: '2px solid #0d1117', width: 10, height: 10 },
+  node: { background: '#120f05', border: '1px solid', borderRadius: 12, padding: '12px 14px', minWidth: 170, fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 24px #fbbf2410', transition: 'border-color 0.3s' },
+  top: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 },
+  iconWrap: { fontSize: 16, width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.3s' },
+  type: { fontSize: 9, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '1px' },
+  label: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
+  badge: { marginLeft: 'auto', fontSize: 8, fontWeight: 700, color: '#fbbf24', background: '#fbbf2410', border: '1px solid #fbbf2420', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.5px' },
+  divider: { height: 1, background: '#ffffff08', marginBottom: 10 },
+  valueRow: { marginBottom: 4 },
+  value: { fontSize: 28, fontWeight: 700, color: '#fbbf24', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
+  meta: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 },
+  status: { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 7, border: '1px solid', transition: 'all 0.3s' },
+  dot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0, transition: 'background 0.3s' },
+  handle: { border: '2px solid #06080f', width: 10, height: 10 },
 };
