@@ -46,9 +46,7 @@ let nodeCounter = 10;
 
 const SIDEBAR_SECTIONS = [
   {
-    label: 'Sources',
-    color: '#38bdf8',
-    bg: 'rgba(56,189,248,0.08)',
+    label: 'Sources', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',
     items: [
       { type: 'sensor', label: 'Sensor', icon: '📡', desc: 'Hardware sensor' },
       { type: 'simulatorSource', label: 'Simulator', icon: '🤖', desc: 'Mock data stream' },
@@ -56,9 +54,7 @@ const SIDEBAR_SECTIONS = [
     ],
   },
   {
-    label: 'Operations',
-    color: '#a78bfa',
-    bg: 'rgba(167,139,250,0.08)',
+    label: 'Operations', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)',
     items: [
       { type: 'movingAverage', label: 'Moving Avg', icon: '〰️', desc: 'Smooth values' },
       { type: 'multiply', label: 'Multiply', icon: '✕', desc: 'Scale values' },
@@ -67,9 +63,7 @@ const SIDEBAR_SECTIONS = [
     ],
   },
   {
-    label: 'Actions',
-    color: '#fb7185',
-    bg: 'rgba(251,113,133,0.08)',
+    label: 'Actions', color: '#fb7185', bg: 'rgba(251,113,133,0.08)',
     items: [
       { type: 'smsAlert', label: 'SMS Alert', icon: '📱', desc: 'Send SMS' },
       { type: 'emailAlert', label: 'Email', icon: '📧', desc: 'Send email' },
@@ -95,6 +89,31 @@ const NODE_DEFAULTS = {
 
 const EDGE_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#fbbf24', '#60a5fa'];
 
+const NODE_LABEL = {
+  sensor: 'Sensor', simulatorSource: 'Simulator', httpSource: 'HTTP',
+  movingAverage: 'Moving Avg', multiply: 'Multiply', add: 'Add', filter: 'Filter',
+  smsAlert: 'SMS Alert', emailAlert: 'Email Alert', logAlert: 'Log Alert', alert: 'Alert',
+};
+
+function buildPipeline(nodes, edges) {
+  if (!nodes.length || !edges.length) return [];
+  const edgeMap = {};
+  edges.forEach(({ source, target }) => { edgeMap[source] = target; });
+  const sourceTypes = ['sensor', 'simulatorSource', 'httpSource'];
+  const start = nodes.find((n) => sourceTypes.includes(n.type));
+  if (!start) return [];
+  const steps = [];
+  let cur = start.id;
+  const visited = new Set();
+  while (cur && !visited.has(cur)) {
+    visited.add(cur);
+    const node = nodes.find((n) => n.id === cur);
+    if (node) steps.push({ type: node.type, label: node.data.label || NODE_LABEL[node.type] });
+    cur = edgeMap[cur];
+  }
+  return steps;
+}
+
 export default function Canvas() {
   const saved = loadGraph();
   const [nodes, setNodes, onNodesChange] = useNodesState(saved.nodes);
@@ -104,16 +123,17 @@ export default function Canvas() {
   const [totalPoints, setTotalPoints] = useState(0);
   const [compiled, setCompiled] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [alertLog, setAlertLog] = useState([]);
   const valuesRef = useRef({});
+  const historyRef = useRef({});
   const rateRef = useRef(0);
+  const logRef = useRef(null);
+
+  const pipeline = buildPipeline(nodes, edges);
 
   const onConnect = useCallback((params) => {
     const color = EDGE_COLORS[Math.floor(Math.random() * EDGE_COLORS.length)];
-    setEdges((eds) => addEdge({
-      ...params, animated: true,
-      style: { stroke: color, strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color },
-    }, eds));
+    setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: color, strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color } }, eds));
   }, []);
 
   useEffect(() => {
@@ -130,22 +150,47 @@ export default function Canvas() {
     ws.onopen = () => setWsStatus('live');
     ws.onclose = () => setWsStatus('offline');
     ws.onerror = () => setWsStatus('offline');
+
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
-      if (data.type === 'alert' || data.type === 'compiled') return;
+
+      // Alert log entries
+      if (data.type === 'alert' && data.triggered) {
+        const entry = {
+          id: Date.now(),
+          label: data.label || 'Alert',
+          value: data.value,
+          threshold: data.threshold,
+          actionType: data.actionType || 'log',
+          time: new Date().toLocaleTimeString(),
+        };
+        setAlertLog((prev) => [entry, ...prev].slice(0, 50));
+        return;
+      }
+      if (data.type === 'compiled') return;
+
       const { metadata, value } = data;
       const deviceId = metadata?.deviceId;
       if (!deviceId || value === undefined) return;
       rateRef.current += 1;
       setTotalPoints((p) => p + 1);
+
+      // Moving average buffer
       if (!valuesRef.current[deviceId]) valuesRef.current[deviceId] = [];
       const buf = valuesRef.current[deviceId];
       buf.push(value);
       if (buf.length > 5) buf.shift();
       const avg = parseFloat((buf.reduce((a, b) => a + b, 0) / buf.length).toFixed(2));
+
+      // Sparkline history buffer
+      if (!historyRef.current[deviceId]) historyRef.current[deviceId] = [];
+      const hist = historyRef.current[deviceId];
+      hist.push(value);
+      if (hist.length > 20) hist.shift();
+
       setNodes((nds) => nds.map((node) => {
         if (['sensor', 'simulatorSource', 'httpSource'].includes(node.type) && node.data.deviceId === deviceId)
-          return { ...node, data: { ...node.data, value } };
+          return { ...node, data: { ...node.data, value, history: [...hist] } };
         if (['filter', 'movingAverage'].includes(node.type))
           return { ...node, data: { ...node.data, avg } };
         if (node.type === 'multiply')
@@ -159,6 +204,11 @@ export default function Canvas() {
     };
     return () => ws.close();
   }, []);
+
+  // Auto-scroll alert log
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = 0;
+  }, [alertLog]);
 
   const onDragOver = useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []);
   const onDrop = useCallback((e) => {
@@ -188,17 +238,17 @@ export default function Canvas() {
   const handleExport = () => {
     const blob = new Blob([JSON.stringify({ nodes, edges }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'nexusflow-graph.json'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'nexusflow-graph.json'; a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleReset = () => {
     localStorage.removeItem(STORAGE_KEY);
-    setNodes(defaultNodes); setEdges(defaultEdges); setCompiled(false);
+    setNodes(defaultNodes); setEdges(defaultEdges); setCompiled(false); setAlertLog([]);
   };
 
   const isLive = wsStatus === 'live';
+  const ACTION_ICON = { sms: '📱', email: '📧', log: '📋', default: '🔔' };
 
   return (
     <div style={s.root}>
@@ -210,35 +260,22 @@ export default function Canvas() {
             <span style={s.logoIcon}>⚡</span>
             <span style={s.logoText}>NexusFlow</span>
           </div>
-          <div style={s.divider} />
+          <div style={s.dividerV} />
           <span style={s.navSub}>IoT Rule Engine</span>
         </div>
 
         <div style={s.navCenter}>
           <div style={{ ...s.statusBadge, borderColor: isLive ? '#34d39944' : '#f8514944', background: isLive ? '#34d39910' : '#f8514910' }}>
             <span style={{ ...s.statusDot, background: isLive ? '#34d399' : '#f85149', boxShadow: isLive ? '0 0 6px #34d399' : 'none' }} />
-            <span style={{ color: isLive ? '#34d399' : '#f85149', fontSize: 11, fontWeight: 600 }}>
-              {isLive ? 'Live' : 'Offline'}
-            </span>
+            <span style={{ color: isLive ? '#34d399' : '#f85149', fontSize: 11, fontWeight: 600 }}>{isLive ? 'Live' : 'Offline'}</span>
           </div>
-          <div style={s.statChip}>
-            <span style={s.statVal}>{dataRate}</span>
-            <span style={s.statLbl}>pts/s</span>
-          </div>
-          <div style={s.statChip}>
-            <span style={s.statVal}>{totalPoints.toLocaleString()}</span>
-            <span style={s.statLbl}>total</span>
-          </div>
-          <div style={s.statChip}>
-            <span style={s.statVal}>{nodes.length}</span>
-            <span style={s.statLbl}>nodes</span>
-          </div>
+          <div style={s.statChip}><span style={s.statVal}>{dataRate}</span><span style={s.statLbl}>pts/s</span></div>
+          <div style={s.statChip}><span style={s.statVal}>{totalPoints.toLocaleString()}</span><span style={s.statLbl}>total</span></div>
+          <div style={s.statChip}><span style={s.statVal}>{nodes.length}</span><span style={s.statLbl}>nodes</span></div>
         </div>
 
         <div style={s.navRight}>
-          <button style={s.btnGhost} onClick={() => setLocked(l => !l)}>
-            {locked ? '🔒' : '🔓'} {locked ? 'Locked' : 'Unlocked'}
-          </button>
+          <button style={s.btnGhost} onClick={() => setLocked(l => !l)}>{locked ? '🔒' : '🔓'} {locked ? 'Locked' : 'Unlocked'}</button>
           <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
           <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
           <button style={{ ...s.btnPrimary, ...(compiled ? s.btnSuccess : {}) }} onClick={handleCompile}>
@@ -246,6 +283,29 @@ export default function Canvas() {
           </button>
         </div>
       </nav>
+
+      {/* ── PIPELINE STATUS BAR ── */}
+      {pipeline.length > 0 && (
+        <div style={s.pipelineBar}>
+          <span style={s.pipelineTitle}>Pipeline</span>
+          <div style={s.pipelineSteps}>
+            {pipeline.map((step, i) => {
+              const isSource = ['sensor', 'simulatorSource', 'httpSource'].includes(step.type);
+              const isAction = ['smsAlert', 'emailAlert', 'logAlert', 'alert'].includes(step.type);
+              const color = isSource ? '#38bdf8' : isAction ? '#fb7185' : '#a78bfa';
+              return (
+                <div key={i} style={s.pipelineStepWrap}>
+                  <div style={{ ...s.pipelineStep, borderColor: color + '44', color, background: color + '10' }}>
+                    {step.label}
+                  </div>
+                  {i < pipeline.length - 1 && <span style={s.pipelineArrow}>→</span>}
+                </div>
+              );
+            })}
+          </div>
+          {compiled && <span style={s.pipelineActive}>● Active</span>}
+        </div>
+      )}
 
       <div style={s.body}>
 
@@ -259,19 +319,12 @@ export default function Canvas() {
               </div>
               {sec.items.map(({ type, label, icon, desc }) => (
                 <div
-                  key={type}
-                  draggable
+                  key={type} draggable
                   onClick={() => addNode(type)}
                   onDragStart={(e) => e.dataTransfer.setData('nodeType', type)}
                   style={s.nodeCard}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = sec.bg;
-                    e.currentTarget.style.borderColor = sec.color + '66';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.borderColor = '#ffffff0d';
-                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = sec.bg; e.currentTarget.style.borderColor = sec.color + '55'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#ffffff0d'; }}
                 >
                   <div style={{ ...s.nodeCardIcon, background: sec.bg, color: sec.color }}>{icon}</div>
                   <div style={s.nodeCardText}>
@@ -306,6 +359,39 @@ export default function Canvas() {
             />
           </ReactFlow>
         </div>
+
+        {/* ── ALERT LOG ── */}
+        <aside style={s.logPanel}>
+          <div style={s.logHeader}>
+            <span style={s.logTitle}>Alert Log</span>
+            <span style={s.logCount}>{alertLog.length}</span>
+            {alertLog.length > 0 && (
+              <button style={s.logClear} onClick={() => setAlertLog([])}>Clear</button>
+            )}
+          </div>
+          <div style={s.logList} ref={logRef}>
+            {alertLog.length === 0 ? (
+              <div style={s.logEmpty}>
+                <span style={{ fontSize: 22 }}>🔕</span>
+                <span style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>No alerts yet</span>
+              </div>
+            ) : (
+              alertLog.map((entry) => (
+                <div key={entry.id} style={s.logEntry}>
+                  <div style={s.logEntryTop}>
+                    <span style={s.logIcon}>{ACTION_ICON[entry.actionType] || ACTION_ICON.default}</span>
+                    <span style={s.logLabel}>{entry.label}</span>
+                    <span style={s.logTime}>{entry.time}</span>
+                  </div>
+                  <div style={s.logEntryBot}>
+                    <span style={s.logValue}>{entry.value}°C</span>
+                    <span style={s.logThresh}>threshold {entry.threshold}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );
@@ -314,62 +400,60 @@ export default function Canvas() {
 const s = {
   root: { display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: '#06080f', fontFamily: 'Inter, sans-serif', overflow: 'hidden' },
 
-  nav: {
-    height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0 16px', background: '#0a0d16',
-    borderBottom: '1px solid #ffffff0f', flexShrink: 0, gap: 12,
-  },
+  nav: { height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', background: '#0a0d16', borderBottom: '1px solid #ffffff0f', flexShrink: 0, gap: 12 },
   navLeft: { display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 },
   logoWrap: { display: 'flex', alignItems: 'center', gap: 7 },
   logoIcon: { fontSize: 18 },
   logoText: { fontSize: 15, fontWeight: 700, color: '#f0f6fc', letterSpacing: '-0.4px' },
-  divider: { width: 1, height: 18, background: '#ffffff15' },
-  navSub: { fontSize: 11, color: '#6e7681', fontWeight: 400 },
-
+  dividerV: { width: 1, height: 18, background: '#ffffff15' },
+  navSub: { fontSize: 11, color: '#6e7681' },
   navCenter: { display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' },
   statusBadge: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid', borderRadius: 20 },
   statusDot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0 },
   statChip: { display: 'flex', alignItems: 'baseline', gap: 4, padding: '3px 10px', background: '#ffffff06', border: '1px solid #ffffff0a', borderRadius: 8 },
   statVal: { fontSize: 13, fontWeight: 700, color: '#e6edf3', fontFamily: 'JetBrains Mono, monospace' },
   statLbl: { fontSize: 10, color: '#6e7681', fontWeight: 500 },
-
   navRight: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
-  btnGhost: {
-    background: 'transparent', color: '#8b949e', border: '1px solid #ffffff12',
-    borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 11,
-    fontWeight: 500, fontFamily: 'Inter, sans-serif', transition: 'all 0.15s',
-  },
-  btnPrimary: {
-    background: 'linear-gradient(135deg, #1a3a5c, #1e4976)', color: '#58a6ff',
-    border: '1px solid #1f6feb', borderRadius: 7, padding: '5px 14px',
-    cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'Inter, sans-serif',
-  },
-  btnSuccess: {
-    background: 'linear-gradient(135deg, #0f2d1a, #14532d)', color: '#34d399',
-    border: '1px solid #16a34a',
-  },
+  btnGhost: { background: 'transparent', color: '#8b949e', border: '1px solid #ffffff12', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 500, fontFamily: 'Inter, sans-serif' },
+  btnPrimary: { background: 'linear-gradient(135deg, #1a3a5c, #1e4976)', color: '#58a6ff', border: '1px solid #1f6feb', borderRadius: 7, padding: '5px 14px', cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'Inter, sans-serif' },
+  btnSuccess: { background: 'linear-gradient(135deg, #0f2d1a, #14532d)', color: '#34d399', border: '1px solid #16a34a' },
+
+  pipelineBar: { display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 38, background: '#0a0d16', borderBottom: '1px solid #ffffff08', flexShrink: 0 },
+  pipelineTitle: { fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '1px', flexShrink: 0 },
+  pipelineSteps: { display: 'flex', alignItems: 'center', gap: 4, flex: 1 },
+  pipelineStepWrap: { display: 'flex', alignItems: 'center', gap: 4 },
+  pipelineStep: { fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 5, border: '1px solid' },
+  pipelineArrow: { fontSize: 10, color: '#334155' },
+  pipelineActive: { fontSize: 10, fontWeight: 700, color: '#34d399', marginLeft: 'auto', flexShrink: 0 },
 
   body: { display: 'flex', flex: 1, overflow: 'hidden' },
 
-  sidebar: {
-    width: 200, background: '#0a0d16', borderRight: '1px solid #ffffff0a',
-    padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4,
-    overflowY: 'auto', flexShrink: 0,
-  },
+  sidebar: { width: 200, background: '#0a0d16', borderRight: '1px solid #ffffff0a', padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto', flexShrink: 0 },
   secWrap: { marginBottom: 16 },
   secHead: { display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px 8px', borderBottom: '1px solid #ffffff08', marginBottom: 6 },
   secDot: { width: 5, height: 5, borderRadius: '50%', flexShrink: 0 },
   secLabel: { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.2px' },
-
-  nodeCard: {
-    display: 'flex', alignItems: 'center', gap: 9, padding: '8px 8px',
-    background: 'transparent', border: '1px solid #ffffff0d', borderRadius: 9,
-    cursor: 'pointer', marginBottom: 4, transition: 'all 0.15s ease',
-  },
+  nodeCard: { display: 'flex', alignItems: 'center', gap: 9, padding: '8px 8px', background: 'transparent', border: '1px solid #ffffff0d', borderRadius: 9, cursor: 'pointer', marginBottom: 4, transition: 'all 0.15s ease' },
   nodeCardIcon: { width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 },
   nodeCardText: { display: 'flex', flexDirection: 'column', gap: 1 },
   nodeCardLabel: { fontSize: 11, color: '#e6edf3', fontWeight: 600 },
-  nodeCardDesc: { fontSize: 9, color: '#6e7681', fontWeight: 400 },
+  nodeCardDesc: { fontSize: 9, color: '#6e7681' },
 
   canvas: { flex: 1, position: 'relative' },
+
+  logPanel: { width: 220, background: '#0a0d16', borderLeft: '1px solid #ffffff0a', display: 'flex', flexDirection: 'column', flexShrink: 0 },
+  logHeader: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #ffffff08', flexShrink: 0 },
+  logTitle: { fontSize: 11, fontWeight: 700, color: '#e6edf3', flex: 1 },
+  logCount: { fontSize: 10, fontWeight: 700, color: '#fb7185', background: '#fb718515', border: '1px solid #fb718530', padding: '1px 6px', borderRadius: 10 },
+  logClear: { fontSize: 9, color: '#475569', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif' },
+  logList: { flex: 1, overflowY: 'auto', padding: '8px' },
+  logEmpty: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 4 },
+  logEntry: { background: '#fb718508', border: '1px solid #fb718520', borderRadius: 8, padding: '8px 10px', marginBottom: 6 },
+  logEntryTop: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 },
+  logIcon: { fontSize: 12 },
+  logLabel: { fontSize: 11, fontWeight: 600, color: '#e6edf3', flex: 1 },
+  logTime: { fontSize: 9, color: '#475569', fontFamily: 'JetBrains Mono, monospace' },
+  logEntryBot: { display: 'flex', alignItems: 'baseline', gap: 6 },
+  logValue: { fontSize: 14, fontWeight: 700, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace' },
+  logThresh: { fontSize: 9, color: '#475569' },
 };
