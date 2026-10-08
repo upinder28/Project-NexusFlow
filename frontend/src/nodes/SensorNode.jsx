@@ -12,6 +12,7 @@ export default function SensorNode({ data }) {
           <div style={s.label}>{data.label || 'Turbine Sensor'}</div>
         </div>
         <div style={s.badge}>SOURCE</div>
+        {data.onDelete && <button style={s.del} onClick={data.onDelete}>✕</button>}
       </div>
       <div style={s.divider} />
       <div style={s.valueRow}>
@@ -52,5 +53,6 @@ const s = {
   unit: { fontSize: 13, color: '#64748b', fontWeight: 500 },
   chartWrap: { marginBottom: 6, marginLeft: -4, marginRight: -4 },
   meta: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace' },
+  del: { marginLeft: 4, background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1, fontFamily: 'Inter, sans-serif' },
   handle: { background: '#38bdf8', border: '2px solid #06080f', width: 10, height: 10 },
 };

@@ -1,7 +1,13 @@
+import { useState } from 'react';
 import { Handle, Position } from 'reactflow';
 
 export default function EmailAlertNode({ data }) {
   const triggered = !!data.triggered;
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(data.threshold ?? 85);
+
+  const commit = () => { data.onThresholdChange?.(Number(val)); setEditing(false); };
+
   return (
     <div style={{ ...s.node, borderColor: triggered ? '#60a5fa' : '#1a2a4a' }}>
       <div style={s.top}>
@@ -16,7 +22,15 @@ export default function EmailAlertNode({ data }) {
       <div style={s.valueRow}>
         <span style={s.value}>{data.avg !== undefined ? data.avg : '—'}</span>
       </div>
-      <div style={s.meta}>threshold: {data.threshold ?? 85}</div>
+      <div style={s.threshRow} onClick={() => setEditing(true)}>
+        {editing ? (
+          <input autoFocus style={s.threshInput} type="number" value={val}
+            onChange={(e) => setVal(e.target.value)} onBlur={commit}
+            onKeyDown={(e) => e.key === 'Enter' && commit()} onClick={(e) => e.stopPropagation()} />
+        ) : (
+          <span style={s.threshLabel}>threshold: <span style={s.threshVal}>{data.threshold ?? 85}</span> ✎</span>
+        )}
+      </div>
       <div style={{ ...s.status, background: triggered ? '#60a5fa18' : '#34d39910', borderColor: triggered ? '#60a5fa' : '#34d399' }}>
         <span style={{ ...s.dot, background: triggered ? '#60a5fa' : '#34d399' }} />
         <span style={{ color: triggered ? '#60a5fa' : '#34d399', fontSize: 11, fontWeight: 600 }}>
@@ -36,9 +50,12 @@ const s = {
   label: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
   badge: { marginLeft: 'auto', fontSize: 8, fontWeight: 700, color: '#60a5fa', background: '#60a5fa10', border: '1px solid #60a5fa20', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.5px' },
   divider: { height: 1, background: '#ffffff08', marginBottom: 10 },
-  valueRow: { marginBottom: 4 },
+  valueRow: { marginBottom: 6 },
   value: { fontSize: 28, fontWeight: 700, color: '#60a5fa', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
-  meta: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 },
+  threshRow: { marginBottom: 8, cursor: 'pointer' },
+  threshLabel: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace' },
+  threshVal: { color: '#60a5fa', fontWeight: 700 },
+  threshInput: { width: '100%', background: '#0a1020', border: '1px solid #60a5fa', borderRadius: 5, color: '#60a5fa', fontSize: 11, padding: '3px 6px', fontFamily: 'JetBrains Mono, monospace', outline: 'none' },
   status: { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 7, border: '1px solid', transition: 'all 0.3s' },
   dot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0, transition: 'background 0.3s' },
   handle: { border: '2px solid #06080f', width: 10, height: 10 },

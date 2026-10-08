@@ -10,6 +10,7 @@ export default function SimulatorSourceNode({ data }) {
           <div style={s.label}>{data.label || 'Mock Sensor'}</div>
         </div>
         <div style={s.badge}>MOCK</div>
+        {data.onDelete && <button style={s.del} onClick={data.onDelete}>✕</button>}
       </div>
       <div style={s.divider} />
       <div style={s.valueRow}>
@@ -34,5 +35,6 @@ const s = {
   value: { fontSize: 28, fontWeight: 700, color: '#34d399', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
   unit: { fontSize: 13, color: '#64748b', fontWeight: 500 },
   meta: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace' },
+  del: { marginLeft: 4, background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1, fontFamily: 'Inter, sans-serif' },
   handle: { background: '#34d399', border: '2px solid #06080f', width: 10, height: 10 },
 };
