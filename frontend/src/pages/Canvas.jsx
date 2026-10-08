@@ -124,6 +124,8 @@ export default function Canvas() {
   const [compiled, setCompiled] = useState(false);
   const [locked, setLocked] = useState(false);
   const [alertLog, setAlertLog] = useState([]);
+  const [telemetryRows, setTelemetryRows] = useState([]);
+  const [showTable, setShowTable] = useState(false);
   const valuesRef = useRef({});
   const historyRef = useRef({});
   const rateRef = useRef(0);
@@ -174,6 +176,7 @@ export default function Canvas() {
       if (!deviceId || value === undefined) return;
       rateRef.current += 1;
       setTotalPoints((p) => p + 1);
+      setTelemetryRows((prev) => [{ id: Date.now(), deviceId, value, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 10));
 
       // Moving average buffer
       if (!valuesRef.current[deviceId]) valuesRef.current[deviceId] = [];
@@ -190,15 +193,15 @@ export default function Canvas() {
 
       setNodes((nds) => nds.map((node) => {
         if (['sensor', 'simulatorSource', 'httpSource'].includes(node.type) && node.data.deviceId === deviceId)
-          return { ...node, data: { ...node.data, value, history: [...hist] } };
+          return { ...node, data: { ...node.data, value, history: [...hist], onDelete: () => deleteNode(node.id) } };
         if (['filter', 'movingAverage'].includes(node.type))
-          return { ...node, data: { ...node.data, avg } };
+          return { ...node, data: { ...node.data, avg, onDelete: () => deleteNode(node.id) } };
         if (node.type === 'multiply')
-          return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)) } };
+          return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
         if (node.type === 'add')
-          return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)) } };
+          return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
         if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(node.type))
-          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85) } };
+          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85), onDelete: () => deleteNode(node.id), onThresholdChange: (t) => updateThreshold(node.id, t) } };
         return node;
       }));
     };
@@ -225,6 +228,15 @@ export default function Canvas() {
     setNodes((nds) => [...nds, { id: `${nodeCounter++}`, type, position, data: { ...NODE_DEFAULTS[type] } }]);
   }, []);
 
+  const deleteNode = useCallback((id) => {
+    setNodes((nds) => nds.filter((n) => n.id !== id));
+    setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+  }, []);
+
+  const updateThreshold = useCallback((id, threshold) => {
+    setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, threshold } } : n));
+  }, []);
+
   const handleCompile = async () => {
     try {
       const res = await fetch('http://localhost:5000/api/compile', {
@@ -244,7 +256,7 @@ export default function Canvas() {
 
   const handleReset = () => {
     localStorage.removeItem(STORAGE_KEY);
-    setNodes(defaultNodes); setEdges(defaultEdges); setCompiled(false); setAlertLog([]);
+    setNodes(defaultNodes); setEdges(defaultEdges); setCompiled(false); setAlertLog([]); setTelemetryRows([]);
   };
 
   const isLive = wsStatus === 'live';
@@ -337,27 +349,62 @@ export default function Canvas() {
           ))}
         </aside>
 
-        {/* ── CANVAS ── */}
-        <div style={s.canvas} onDrop={onDrop} onDragOver={onDragOver}>
-          <ReactFlow
-            nodes={nodes} edges={edges}
-            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-            onConnect={onConnect} nodeTypes={nodeTypes}
-            fitView nodesDraggable={!locked} nodesFocusable={!locked}
-            defaultEdgeOptions={{ animated: true }}
-          >
-            <Background variant={BackgroundVariant.Dots} color="#ffffff08" gap={20} size={1} />
-            <Controls style={{ bottom: 24, left: 24 }} />
-            <MiniMap
-              style={{ bottom: 24, right: 24, borderRadius: 10, border: '1px solid #ffffff10' }}
-              nodeColor={(n) => {
-                if (['sensor', 'simulatorSource', 'httpSource'].includes(n.type)) return '#38bdf8';
-                if (['movingAverage', 'multiply', 'add', 'filter'].includes(n.type)) return '#a78bfa';
-                return '#fb7185';
-              }}
-              maskColor="rgba(6,8,15,0.75)"
-            />
-          </ReactFlow>
+        {/* ── CANVAS + TABLE ── */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={s.canvas} onDrop={onDrop} onDragOver={onDragOver}>
+            <ReactFlow
+              nodes={nodes} edges={edges}
+              onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+              onConnect={onConnect} nodeTypes={nodeTypes}
+              fitView nodesDraggable={!locked} nodesFocusable={!locked}
+              defaultEdgeOptions={{ animated: true }}
+            >
+              <Background variant={BackgroundVariant.Dots} color="#ffffff08" gap={20} size={1} />
+              <Controls style={{ bottom: 24, left: 24 }} />
+              <MiniMap
+                style={{ bottom: 24, right: 24, borderRadius: 10, border: '1px solid #ffffff10' }}
+                nodeColor={(n) => {
+                  if (['sensor', 'simulatorSource', 'httpSource'].includes(n.type)) return '#38bdf8';
+                  if (['movingAverage', 'multiply', 'add', 'filter'].includes(n.type)) return '#a78bfa';
+                  return '#fb7185';
+                }}
+                maskColor="rgba(6,8,15,0.75)"
+              />
+            </ReactFlow>
+          </div>
+
+          {/* ── TELEMETRY TABLE ── */}
+          <div style={s.tableWrap}>
+            <div style={s.tableHeader} onClick={() => setShowTable(t => !t)}>
+              <span style={s.tableTitle}>📊 Live Telemetry</span>
+              <span style={s.tableCount}>{telemetryRows.length} rows</span>
+              <span style={s.tableToggle}>{showTable ? '▼' : '▲'} {showTable ? 'Hide' : 'Show'}</span>
+            </div>
+            {showTable && (
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    {['Time', 'Device ID', 'Value'].map((h) => (
+                      <th key={h} style={s.th}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {telemetryRows.length === 0 ? (
+                    <tr><td colSpan={3} style={{ ...s.td, textAlign: 'center', color: '#475569' }}>Waiting for data...</td></tr>
+                  ) : (
+                    telemetryRows.map((row, i) => (
+                      <tr key={row.id} style={{ background: i % 2 === 0 ? '#ffffff03' : 'transparent' }}>
+                        <td style={s.td}>{row.time}</td>
+                        <td style={s.td}>{row.deviceId}</td>
+                        <td style={{ ...s.td, color: '#38bdf8', fontWeight: 700 }}>{row.value}°C</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
 
         {/* ── ALERT LOG ── */}
@@ -439,7 +486,16 @@ const s = {
   nodeCardLabel: { fontSize: 11, color: '#e6edf3', fontWeight: 600 },
   nodeCardDesc: { fontSize: 9, color: '#6e7681' },
 
-  canvas: { flex: 1, position: 'relative' },
+  canvas: { flex: 1, position: 'relative', overflow: 'hidden' },
+
+  tableWrap: { background: '#0a0d16', borderTop: '1px solid #ffffff0a', flexShrink: 0 },
+  tableHeader: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', cursor: 'pointer' },
+  tableTitle: { fontSize: 11, fontWeight: 700, color: '#e6edf3' },
+  tableCount: { fontSize: 10, color: '#38bdf8', background: '#38bdf810', border: '1px solid #38bdf820', padding: '1px 6px', borderRadius: 10 },
+  tableToggle: { marginLeft: 'auto', fontSize: 10, color: '#475569', cursor: 'pointer' },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 11 },
+  th: { padding: '6px 16px', textAlign: 'left', fontSize: 9, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.8px', borderBottom: '1px solid #ffffff08' },
+  td: { padding: '5px 16px', color: '#94a3b8', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, borderBottom: '1px solid #ffffff05' },
 
   logPanel: { width: 220, background: '#0a0d16', borderLeft: '1px solid #ffffff0a', display: 'flex', flexDirection: 'column', flexShrink: 0 },
   logHeader: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #ffffff08', flexShrink: 0 },

@@ -10,6 +10,7 @@ export default function MultiplyNode({ data }) {
           <div style={s.label}>{data.label || 'Multiply'}</div>
         </div>
         <div style={s.badge}>OP</div>
+        {data.onDelete && <button style={s.del} onClick={data.onDelete}>✕</button>}
       </div>
       <div style={s.divider} />
       <div style={s.valueRow}>
@@ -33,6 +34,7 @@ const s = {
   valueRow: { marginBottom: 4 },
   value: { fontSize: 28, fontWeight: 700, color: '#a78bfa', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
   meta: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace' },
+  del: { marginLeft: 4, background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1, fontFamily: 'Inter, sans-serif' },
   handleL: { background: '#a78bfa', border: '2px solid #06080f', width: 10, height: 10 },
   handleR: { background: '#a78bfa', border: '2px solid #06080f', width: 10, height: 10 },
 };

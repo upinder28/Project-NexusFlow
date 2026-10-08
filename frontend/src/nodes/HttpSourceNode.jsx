@@ -10,6 +10,7 @@ export default function HttpSourceNode({ data }) {
           <div style={s.label}>{data.label || 'HTTP Endpoint'}</div>
         </div>
         <div style={s.badge}>HTTP</div>
+        {data.onDelete && <button style={s.del} onClick={data.onDelete}>✕</button>}
       </div>
       <div style={s.divider} />
       <div style={s.valueRow}>
@@ -32,5 +33,6 @@ const s = {
   valueRow: { marginBottom: 4 },
   value: { fontSize: 28, fontWeight: 700, color: '#22d3ee', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
   meta: { fontSize: 9, color: '#475569', fontFamily: 'JetBrains Mono, monospace', wordBreak: 'break-all' },
+  del: { marginLeft: 4, background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1, fontFamily: 'Inter, sans-serif' },
   handle: { background: '#22d3ee', border: '2px solid #06080f', width: 10, height: 10 },
 };
