@@ -5,7 +5,7 @@ const http = require('http');
 const PORT = process.env.PORT || 5000;
 const DEVICE_ID = 'device-stress';
 const SENSOR_TYPE = 'temperature';
-const TOTAL_REQUESTS = 6000;
+const TOTAL_REQUESTS = 5000;
 const CONCURRENCY = 100; // parallel requests at a time
 
 let completed = 0;

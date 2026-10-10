@@ -121,7 +121,7 @@ export default function Canvas() {
   const [wsStatus, setWsStatus] = useState('connecting');
   const [dataRate, setDataRate] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
-  const [compiled, setCompiled] = useState(false);
+  const [compileStatus, setCompileStatus] = useState('idle'); // idle | compiling | running | failed
   const [locked, setLocked] = useState(false);
   const [alertLog, setAlertLog] = useState([]);
   const [telemetryRows, setTelemetryRows] = useState([]);
@@ -150,8 +150,8 @@ export default function Canvas() {
   useEffect(() => {
     const ws = new WebSocket('ws://localhost:5000');
     ws.onopen = () => setWsStatus('live');
-    ws.onclose = () => setWsStatus('offline');
-    ws.onerror = () => setWsStatus('offline');
+    ws.onclose = () => setWsStatus('disconnected');
+    ws.onerror = () => setWsStatus('disconnected');
 
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
@@ -238,13 +238,15 @@ export default function Canvas() {
   }, []);
 
   const handleCompile = async () => {
+    setCompileStatus('compiling');
     try {
       const res = await fetch('http://localhost:5000/api/compile', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodes, edges }),
       });
-      if (res.ok) setCompiled(true);
-    } catch (e) { console.error(e); }
+      if (res.ok) setCompileStatus('running');
+      else setCompileStatus('failed');
+    } catch (e) { setCompileStatus('failed'); }
   };
 
   const handleExport = () => {
@@ -256,7 +258,7 @@ export default function Canvas() {
 
   const handleReset = () => {
     localStorage.removeItem(STORAGE_KEY);
-    setNodes(defaultNodes); setEdges(defaultEdges); setCompiled(false); setAlertLog([]); setTelemetryRows([]);
+    setNodes(defaultNodes); setEdges(defaultEdges); setCompileStatus('idle'); setAlertLog([]); setTelemetryRows([]);
   };
 
   const isLive = wsStatus === 'live';
@@ -279,7 +281,7 @@ export default function Canvas() {
         <div style={s.navCenter}>
           <div style={{ ...s.statusBadge, borderColor: isLive ? '#34d39944' : '#f8514944', background: isLive ? '#34d39910' : '#f8514910' }}>
             <span style={{ ...s.statusDot, background: isLive ? '#34d399' : '#f85149', boxShadow: isLive ? '0 0 6px #34d399' : 'none' }} />
-            <span style={{ color: isLive ? '#34d399' : '#f85149', fontSize: 11, fontWeight: 600 }}>{isLive ? 'Live' : 'Offline'}</span>
+            <span style={{ color: isLive ? '#34d399' : '#f85149', fontSize: 11, fontWeight: 600 }}>{isLive ? 'Live' : wsStatus === 'disconnected' ? 'Disconnected' : 'Offline'}</span>
           </div>
           <div style={s.statChip}><span style={s.statVal}>{dataRate}</span><span style={s.statLbl}>pts/s</span></div>
           <div style={s.statChip}><span style={s.statVal}>{totalPoints.toLocaleString()}</span><span style={s.statLbl}>total</span></div>
@@ -290,8 +292,19 @@ export default function Canvas() {
           <button style={s.btnGhost} onClick={() => setLocked(l => !l)}>{locked ? '🔒' : '🔓'} {locked ? 'Locked' : 'Unlocked'}</button>
           <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
           <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
-          <button style={{ ...s.btnPrimary, ...(compiled ? s.btnSuccess : {}) }} onClick={handleCompile}>
-            {compiled ? '✓ Compiled' : '▶ Compile'}
+          <button
+            style={{
+              ...s.btnPrimary,
+              ...(compileStatus === 'running' ? s.btnSuccess : {}),
+              ...(compileStatus === 'failed' ? s.btnError : {}),
+            }}
+            onClick={handleCompile}
+            disabled={compileStatus === 'compiling'}
+          >
+            {compileStatus === 'compiling' && '⏳ Compiling…'}
+            {compileStatus === 'running' && '✓ Pipeline Running'}
+            {compileStatus === 'failed' && '✗ Compile Failed'}
+            {compileStatus === 'idle' && '▶ Compile'}
           </button>
         </div>
       </nav>
@@ -315,7 +328,9 @@ export default function Canvas() {
               );
             })}
           </div>
-          {compiled && <span style={s.pipelineActive}>● Active</span>}
+          {compileStatus === 'running' && <span style={s.pipelineActive}>● Active</span>}
+          {compileStatus === 'failed' && <span style={{ ...s.pipelineActive, color: '#f85149' }}>✗ Failed</span>}
+          {compileStatus === 'compiling' && <span style={{ ...s.pipelineActive, color: '#fbbf24' }}>⏳ Compiling</span>}
         </div>
       )}
 
@@ -464,6 +479,7 @@ const s = {
   btnGhost: { background: 'transparent', color: '#8b949e', border: '1px solid #ffffff12', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 500, fontFamily: 'Inter, sans-serif' },
   btnPrimary: { background: 'linear-gradient(135deg, #1a3a5c, #1e4976)', color: '#58a6ff', border: '1px solid #1f6feb', borderRadius: 7, padding: '5px 14px', cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'Inter, sans-serif' },
   btnSuccess: { background: 'linear-gradient(135deg, #0f2d1a, #14532d)', color: '#34d399', border: '1px solid #16a34a' },
+  btnError: { background: 'linear-gradient(135deg, #2d0f0f, #531414)', color: '#f85149', border: '1px solid #a31616' },
 
   pipelineBar: { display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 38, background: '#0a0d16', borderBottom: '1px solid #ffffff08', flexShrink: 0 },
   pipelineTitle: { fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '1px', flexShrink: 0 },
