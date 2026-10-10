@@ -5,8 +5,10 @@ const { pushToStream } = require('../streamEngine');
 const insertTelemetry = async (req, res) => {
   try {
     const { deviceId, sensorType, value } = req.body;
-    if (!deviceId || !sensorType || value === undefined)
+    if (!deviceId || typeof deviceId !== 'string' || !sensorType || typeof sensorType !== 'string' || value === undefined)
       return res.status(400).json({ error: 'deviceId, sensorType, value are required' });
+    if (typeof value !== 'number' || !isFinite(value))
+      return res.status(400).json({ error: 'value must be a finite number' });
 
     const doc = await Telemetry.create({
       timestamp: new Date(),

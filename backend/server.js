@@ -8,11 +8,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-connectDB();
-
 app.use('/api/telemetry', require('./routes/telemetry'));
 
-// Graph compiler endpoint
 const { compileGraph } = require('./compiler');
 app.post('/api/compile', (req, res) => {
   try {
@@ -23,11 +20,17 @@ app.post('/api/compile', (req, res) => {
   }
 });
 
-const server = app.listen(process.env.PORT, () =>
-  console.log(`Server running on port ${process.env.PORT}`)
-);
-
-server.on('upgrade', (req, socket, head) => {
-  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
-});
-wss.on('connection', () => console.log('WebSocket client connected'));
+connectDB()
+  .then(() => {
+    const server = app.listen(process.env.PORT, () =>
+      console.log(`Server running on port ${process.env.PORT}`)
+    );
+    server.on('upgrade', (req, socket, head) => {
+      wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    });
+    wss.on('connection', () => console.log('WebSocket client connected'));
+  })
+  .catch((err) => {
+    console.error('MongoDB connection failed:', err.message);
+    process.exit(1);
+  });
