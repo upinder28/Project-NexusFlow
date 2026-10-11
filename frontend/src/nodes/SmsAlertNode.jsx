@@ -20,6 +20,7 @@ export default function SmsAlertNode({ data }) {
           <div style={s.label}>{data.label || 'SMS Alert'}</div>
         </div>
         <div style={s.badge}>ACTION</div>
+        {data.onDelete && <button style={s.del} onClick={data.onDelete}>✕</button>}
       </div>
       <div style={s.divider} />
       <div style={s.valueRow}>

@@ -106,7 +106,7 @@ function compileGraph(graph, wss) {
   );
   if (!sensorNode) throw new Error('No sensor node found in graph');
 
-  const deviceId = sensorNode.data.deviceId || 'device-1';
+  const deviceId = sensorNode.data?.deviceId || sensorNode.data?.label || 'device-1';
   const stream = getSensorStream(deviceId);
   const adj = buildAdjacency(edges);
 
