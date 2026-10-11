@@ -1,7 +1,13 @@
+import { useState } from 'react';
 import { Handle, Position } from 'reactflow';
 
 export default function AlertNode({ data }) {
   const triggered = !!data.triggered;
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(data.threshold ?? 85);
+
+  const commit = () => { data.onThresholdChange?.(Number(val)); setEditing(false); };
+
   return (
     <div style={{ ...s.node, borderColor: triggered ? '#fb7185' : '#4a1a1a' }}>
       <div style={s.top}>
@@ -11,10 +17,20 @@ export default function AlertNode({ data }) {
           <div style={s.label}>{data.label || 'Alert'}</div>
         </div>
         <div style={s.badge}>ACTION</div>
+        {data.onDelete && <button style={s.del} onClick={data.onDelete}>✕</button>}
       </div>
       <div style={s.divider} />
       <div style={s.valueRow}>
         <span style={s.value}>{data.avg !== undefined ? data.avg : '—'}</span>
+      </div>
+      <div style={s.threshRow} onClick={() => setEditing(true)}>
+        {editing ? (
+          <input autoFocus style={s.threshInput} type="number" value={val}
+            onChange={(e) => setVal(e.target.value)} onBlur={commit}
+            onKeyDown={(e) => e.key === 'Enter' && commit()} onClick={(e) => e.stopPropagation()} />
+        ) : (
+          <span style={s.threshLabel}>threshold: <span style={s.threshVal}>{data.threshold ?? 85}</span> ✎</span>
+        )}
       </div>
       <div style={{ ...s.status, background: triggered ? '#fb718518' : '#34d39910', borderColor: triggered ? '#fb7185' : '#34d399' }}>
         <span style={{ ...s.dot, background: triggered ? '#fb7185' : '#34d399' }} />
@@ -34,9 +50,14 @@ const s = {
   type: { fontSize: 9, fontWeight: 700, color: '#fb7185', textTransform: 'uppercase', letterSpacing: '1px' },
   label: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
   badge: { marginLeft: 'auto', fontSize: 8, fontWeight: 700, color: '#fb7185', background: '#fb718510', border: '1px solid #fb718520', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.5px' },
+  del: { marginLeft: 4, background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1, fontFamily: 'Inter, sans-serif' },
   divider: { height: 1, background: '#ffffff08', marginBottom: 10 },
-  valueRow: { marginBottom: 8 },
+  valueRow: { marginBottom: 6 },
   value: { fontSize: 28, fontWeight: 700, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 },
+  threshRow: { marginBottom: 8, cursor: 'pointer' },
+  threshLabel: { fontSize: 10, color: '#475569', fontFamily: 'JetBrains Mono, monospace' },
+  threshVal: { color: '#fb7185', fontWeight: 700 },
+  threshInput: { width: '100%', background: '#2a0d0d', border: '1px solid #fb7185', borderRadius: 5, color: '#fb7185', fontSize: 11, padding: '3px 6px', fontFamily: 'JetBrains Mono, monospace', outline: 'none' },
   status: { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 7, border: '1px solid', transition: 'all 0.3s' },
   dot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0, transition: 'background 0.3s' },
   handle: { border: '2px solid #06080f', width: 10, height: 10 },
