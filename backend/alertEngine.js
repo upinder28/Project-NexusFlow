@@ -1,5 +1,5 @@
-// Alert/Action trigger engine
-// Har alert node ka action type ke hisaab se handle karta hai
+const COOLDOWN_MS = 30000;
+const lastAlertTime = {};
 
 function triggerAlert(node, value, wss) {
   const { actionType = 'log', threshold = 70, label = 'Alert' } = node.data;
@@ -16,12 +16,16 @@ function triggerAlert(node, value, wss) {
     timestamp: new Date().toISOString(),
   };
 
-  // Broadcast to all WebSocket clients
   wss.clients.forEach((client) => {
     if (client.readyState === 1) client.send(JSON.stringify(payload));
   });
 
   if (!isTriggered) return;
+
+  const key = node.id;
+  const now = Date.now();
+  if (lastAlertTime[key] && now - lastAlertTime[key] < COOLDOWN_MS) return;
+  lastAlertTime[key] = now;
 
   switch (actionType) {
     case 'sms':
@@ -30,10 +34,8 @@ function triggerAlert(node, value, wss) {
     case 'email':
       console.log(`[EMAIL ALERT] ${label}: value ${value} crossed threshold ${threshold}`);
       break;
-    case 'log':
     default:
       console.log(`[LOG ALERT] ${label}: value ${value} crossed threshold ${threshold}`);
-      break;
   }
 }
 
