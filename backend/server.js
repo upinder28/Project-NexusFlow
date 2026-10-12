@@ -9,6 +9,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/api/telemetry', require('./routes/telemetry'));
+app.use('/api/auth', require('./routes/auth'));
 
 const { compileGraph } = require('./compiler');
 app.post('/api/compile', (req, res) => {
