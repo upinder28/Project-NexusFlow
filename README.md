@@ -1,232 +1,103 @@
-# NexusFlow: Visual IoT Telemetry & Rule Engine
+# NexusFlow – Visual IoT Telemetry & Rule Engine
 
-> **Project 1 — Infotact Solutions · Real-World Applications – Hands-on System Building**
+## About the Project
 
-NexusFlow is an IoT-based rule engine that lets users create data-processing workflows using a **visual drag-and-drop interface** — no hardcoded business logic required.
+NexusFlow is a visual IoT workflow application that allows users to build data processing pipelines using a drag-and-drop interface. It helps simplify sensor data processing by connecting different nodes instead of hardcoding every rule.
 
-Instead of writing `if (temperature > 80°C) { sendSMS(); }`, factory operators build it visually by connecting nodes on a canvas.
+The project uses React Flow to build workflows, Node.js and RxJS to process the graph, and MongoDB Time-Series collections to store sensor telemetry.
 
----
+## Key Features
 
-## ✅ Completion Status: Week 1 + Week 2 + Mid-Project Review
+- **Visual Workflow Builder:** Create and connect nodes through an interactive canvas.
+- **Custom Node Library:** Includes sensor sources, HTTP sources, simulators, mathematical operations, filters, and alert nodes.
+- **Graph Serialization:** Convert workflows into JSON containing nodes and connections.
+- **Stream Compiler:** Parse the workflow graph and prepare the corresponding processing logic.
+- **Telemetry Ingestion:** Receive sensor readings through Express APIs.
+- **Time-Series Storage:** Store telemetry data with timestamps and sensor information.
+- **WebSocket Communication:** Support real-time communication between the backend and frontend.
+- **Alert Engine:** Check configured conditions and generate alert events.
 
----
+## Technology Stack
 
-## Problem Statement
+| Component | Technologies |
+|---|---|
+| Frontend | React.js, React Flow, JavaScript, CSS |
+| Backend | Node.js, Express.js |
+| Stream Processing | RxJS |
+| Database | MongoDB, Mongoose |
+| Communication | WebSockets |
+| API Requests | Axios |
 
-Hardcoding logic for IoT devices (e.g., "If temperature > 80°C, send an alert") requires developer intervention for every business rule change. Standard MERN apps struggle to store and query high-frequency machine data efficiently while simultaneously running dynamic, user-defined logic against continuous data streams.
+## How It Works
 
-## Use Case
+1. Users create a workflow by adding nodes to the canvas.
+2. Nodes are connected to define the data processing sequence.
+3. The complete workflow is serialized into JSON.
+4. The backend compiler reads the graph and its connections.
+5. Sensor readings enter the system through the ingestion API.
+6. RxJS streams process data according to the configured operations.
+7. The alert engine checks conditions and generates relevant events.
 
-A factory floor manager logs into NexusFlow. Using a React-based visual drag-and-drop canvas, they connect a "Turbine Sensor" node → "Moving Average Filter" node → "SMS Alert" node. The Node.js backend instantly compiles this visual graph into an executable data stream. As millions of telemetry points pour into the optimized MongoDB Time-Series collections, the custom rule executes in real-time, notifying the manager when anomalies occur.
+## Example Workflow
 
----
+**Turbine Sensor → Moving Average → SMS Alert**
 
-## Technologies
+A sensor provides temperature readings, the Moving Average node processes the readings, and the SMS Alert node checks the processed value against the configured threshold.
 
-| Layer      | Technology                          |
-|------------|-------------------------------------|
-| Frontend   | React 18, React Flow 11, Recharts   |
-| Backend    | Node.js, Express 5, RxJS 7          |
-| Database   | MongoDB 5.0+ Time-Series            |
-| Realtime   | WebSockets (ws library)             |
-| Language   | JavaScript (ES2022)                 |
+The current alert implementation logs alert messages; actual SMS delivery is not configured.
 
----
+## Project Development
 
-## Key Modules
+### Week 1 – Initial Setup
+- Set up the React application and React Flow canvas.
+- Created the Node.js and Express backend.
+- Set up the MongoDB connection and telemetry data model.
+- Started implementing the telemetry ingestion API.
 
-### 1. Visual Graph Builder (React + React Flow)
-A node-based UI allowing non-technical users to build complex logic trees and data pipelines.
-
-**13 Custom Node Types:**
-- **Sources**: `SensorNode`, `SimulatorSourceNode`, `HttpSourceNode`, `DataSourceNode`
-- **Operations**: `MovingAverageNode`, `MathOperationNode`, `MultiplyNode`, `AddNode`, `FilterNode`
-- **Actions**: `SmsAlertNode`, `EmailAlertNode`, `LogAlertNode`, `AlertNode`
-
-### 2. Time-Series Database (MongoDB 5.0+)
-Utilizes native MongoDB Time-Series collections optimized for append-only sensor data.
-```
-Collection: telemetries
-timeField: timestamp | metaField: metadata | granularity: seconds
-```
-
-### 3. Stream Compiler (Node.js + RxJS)
-Backend engine that translates the JSON graph from the frontend into highly concurrent, reactive data streams (Observables).
-
-```
-POST /api/compile  →  Graph JSON  →  RxJS Pipeline  →  WebSocket broadcast
-```
-
-### 4. Ingestion API (Express + WebSockets)
-High-throughput endpoints to receive mock hardware telemetry and broadcast alerts back to the client.
-
----
-
-## API Endpoints
-
-| Method | Endpoint | Description | Week |
-|--------|----------|-------------|------|
-| POST | `/api/telemetry` | Ingest sensor telemetry, push to RxJS stream & MongoDB | 1 |
-| GET  | `/api/telemetry/:deviceId` | Retrieve stored telemetry with optional time-range filter | 1 |
-| POST | `/api/compile` | Compile React Flow graph JSON into RxJS observable pipeline | 2 |
-| POST | `/api/graph/save` | Persist current graph JSON to disk | 2 |
-| GET  | `/api/graph/load` | Reload previously saved graph JSON | 2 |
-| POST | `/api/graph/validate` | Validate graph structure (source, connectivity, actions) | 2 |
-| GET  | `/api/stats` | Runtime stats: ingest rate, alerts, compile runs, uptime | 2 |
-| GET  | `/api/health` | Server health check | 2 |
-
----
-
-## Week-wise Development Plan
-
-### Week 1 — Foundation
-
-**Backend (Node.js, Express, MongoDB Time-Series)**
-- [x] MongoDB Time-Series collection setup (`timeseries: { timeField, metaField, granularity }`)
-- [x] Express server with CORS + WebSocket upgrade
-- [x] `POST /api/telemetry` — high-throughput ingestion endpoint
-- [x] `GET /api/telemetry/:deviceId` — historical data retrieval
-- [x] RxJS Subject per deviceId (`streamEngine.js`)
-- [x] Mock IoT simulator (`simulator.js`) — 1 data point/sec
-
-**Frontend (React, React Flow)**
-- [x] React app initialized with Vite
-- [x] React Flow integration — drag-and-drop canvas
-- [x] Animated edge connections
-- [x] Pipeline preview status bar
-- [x] localStorage graph persistence
-- [x] WebSocket live connection + status indicator
-
----
-
-### Week 2 — Core Engine
-
-**Backend (Logic Compiler)**
-- [x] `POST /api/compile` — accepts React Flow JSON graph
-- [x] `compiler.js` — graph walk: source → operations → actions
-- [x] RxJS operators: `bufferCount` (moving average), `map` (math), `filter` (threshold)
-- [x] Support for all node types: `movingAverage`, `multiply`, `add`, `filter`, `mathOperation`
-- [x] Duplicate pipeline prevention via subscription registry
-- [x] Alert engine (`alertEngine.js`) — SMS/email/log dispatch + WebSocket broadcast
-- [x] `POST /api/graph/save` + `GET /api/graph/load` + `POST /api/graph/validate`
-- [x] `GET /api/stats` — runtime stats tracker
-- [x] `statsTracker.js` — ingest rate, alert count, compile runs, uptime
-
-**Frontend (Node Library)**
-- [x] `DataSourceNode` — type selector (Sensor/HTTP/Simulator/MQTT) + deviceId config
-- [x] `MathOperationNode` — 7 operations (Moving Average, Add, Subtract, Multiply, Divide, Max, Min)
-- [x] Both registered in Canvas `nodeTypes` map
-- [x] Added to sidebar under Sources / Operations sections
-- [x] Graph save/load via backend buttons in nav bar
-- [x] JSON file import from local disk
-- [x] Graph validate with banner feedback
-- [x] Mid-Project Review dashboard (`/src/pages/MidReview.jsx`)
-
----
-
-## Mid-Project Review Dashboard
-
-Navigate to the **Mid-Review** page from the canvas (purple button in nav) to see:
-- Live backend stats (ingest rate, alerts fired, active devices, uptime)
-- Live telemetry area chart (device-1 stream)
-- Development timeline (Week 1 → Week 2 → Mid-Review)
-- System architecture diagram (Simulator → API → MongoDB → RxJS → WebSocket → React)
-- All 6 modules with expandable feature lists
-- Complete API endpoint table
-- Demo pipeline: Turbine Sensor → Moving Average → SMS Alert
-
----
-
-## Project Structure
-
-```
-NexusFlow/
-├── backend/
-│   ├── server.js            # Express + WebSocket server
-│   ├── compiler.js          # Logic compiler (graph → RxJS pipeline)
-│   ├── streamEngine.js      # RxJS Subject registry per deviceId
-│   ├── alertEngine.js       # Alert trigger & WebSocket broadcast
-│   ├── statsTracker.js      # Runtime stats (Week 2)
-│   ├── simulator.js         # Mock IoT telemetry generator
-│   ├── stressTest.js        # 5000-write/sec ingestion audit
-│   ├── db.js                # MongoDB Time-Series connection
-│   ├── wss.js               # WebSocket server instance
-│   ├── models/
-│   │   └── Telemetry.js     # MongoDB schema (timeField/metaField)
-│   ├── controllers/
-│   │   └── telemetryController.js
-│   └── routes/
-│       ├── telemetry.js     # Week 1: ingest + query
-│       └── graph.js         # Week 2: save / load / validate
-└── frontend/
-    └── src/
-        ├── App.jsx           # Hash-based routing (Canvas ↔ MidReview)
-        ├── pages/
-        │   ├── Canvas.jsx    # Main drag-and-drop canvas
-        │   └── MidReview.jsx # Mid-project review dashboard
-        ├── nodes/            # 13 custom React Flow node components
-        │   ├── SensorNode.jsx
-        │   ├── DataSourceNode.jsx
-        │   ├── SimulatorSourceNode.jsx
-        │   ├── HttpSourceNode.jsx
-        │   ├── MovingAverageNode.jsx
-        │   ├── MathOperationNode.jsx
-        │   ├── MultiplyNode.jsx
-        │   ├── AddNode.jsx
-        │   ├── FilterNode.jsx
-        │   ├── SmsAlertNode.jsx
-        │   ├── EmailAlertNode.jsx
-        │   ├── LogAlertNode.jsx
-        │   └── AlertNode.jsx
-        └── components/
-            └── InspectorPanel.jsx
-```
-
----
+### Week 2 – Workflow Builder and Stream Processing
+- Added custom nodes for data sources, mathematical operations, filters, and alerts.
+- Implemented graph serialization and backend graph parsing.
+- Developed the stream compiler and RxJS processing logic.
+- Integrated WebSocket communication.
 
 ## Running the Project
 
 ### Prerequisites
-- Node.js 18+
-- MongoDB running locally on port 27017
+- Node.js and npm
+- MongoDB
 
-### 1. Start the Backend
+### Backend Setup
+
 ```bash
 cd backend
 npm install
-npm start          # Start Express + WebSocket server on :5000
 ```
 
-### 2. Start the IoT Simulator (separate terminal)
+Create a `.env` file inside the `backend` directory using the following configuration:
+
+```env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/nexusflow
+```
+
+Start the backend:
+
 ```bash
-cd backend
-npm run simulate   # Sends 1 telemetry point/sec to POST /api/telemetry
+npm start
 ```
 
-### 3. Start the Frontend
+### Frontend Setup
+
+Open another terminal:
+
 ```bash
 cd frontend
 npm install
-npm start          # Vite dev server on :5173
+npm start
 ```
 
-### 4. (Optional) Run Ingestion Stress Test
-```bash
-cd backend
-npm run benchmark  # Fires 5000 concurrent writes, reports writes/sec
-```
+Open the local URL displayed in the terminal to access the application.
 
----
+## Project Goal
 
-## Demo Flow
-
-1. Open `http://localhost:5173`
-2. The default pipeline is already set: **Turbine Sensor → Moving Average → SMS Alert**
-3. Click **▶ Compile** — the backend builds the RxJS pipeline
-4. Run the simulator: `npm run simulate` in `/backend`
-5. Watch the sensor node show live temperature values with a sparkline
-6. When the moving average crosses 85°C, the SMS Alert node turns red and the Alert Log fires
-7. Click **📊 Mid-Review** to open the project dashboard
-
----
+NexusFlow aims to make IoT data pipelines easier to create, configure, and process through a visual workflow builder and a modular backend.
