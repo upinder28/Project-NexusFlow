@@ -3,6 +3,7 @@ const { getSensorStream } = require('./streamEngine');
 const { triggerAlert } = require('./alertEngine');
 
 const activeSubscriptions = [];
+const pipelineStatus = { active: false, deviceId: null, nodeCount: 0, edgeCount: 0, compiledAt: null };
 
 function validateGraph(nodes, edges) {
   const nodeIds = new Set(nodes.map((n) => n.id));
@@ -111,6 +112,12 @@ function compileGraph(graph, wss) {
   const adj = buildAdjacency(edges);
 
   buildStreamChain(sensorNode.id, adj, nodes, stream, wss);
+
+  pipelineStatus.active = true;
+  pipelineStatus.deviceId = deviceId;
+  pipelineStatus.nodeCount = nodes.length;
+  pipelineStatus.edgeCount = edges.length;
+  pipelineStatus.compiledAt = new Date().toISOString();
 }
 
-module.exports = { compileGraph };
+module.exports = { compileGraph, pipelineStatus, activeSubscriptions };
