@@ -10,6 +10,7 @@ app.use(express.json());
 
 app.use('/api/telemetry', require('./routes/telemetry'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/pipeline', require('./routes/pipeline'));
 
 const { compileGraph } = require('./compiler');
 app.post('/api/compile', (req, res) => {
