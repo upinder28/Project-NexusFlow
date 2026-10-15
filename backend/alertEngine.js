@@ -1,8 +1,10 @@
+const RuleLog = require('./models/RuleLog');
+
 const COOLDOWN_MS = 30000;
 const lastAlertTime = {};
 
 function triggerAlert(node, value, wss) {
-  const { actionType = 'log', threshold = 70, label = 'Alert' } = node.data;
+  const { actionType = 'log', threshold = 70, label = 'Alert', deviceId = 'unknown' } = node.data;
   const isTriggered = value >= threshold;
 
   const payload = {
@@ -19,6 +21,10 @@ function triggerAlert(node, value, wss) {
   wss.clients.forEach((client) => {
     if (client.readyState === 1) client.send(JSON.stringify(payload));
   });
+
+  // Save every evaluation to MongoDB
+  RuleLog.create({ deviceId, value, threshold, actionType, label, triggered: isTriggered })
+    .catch((err) => console.error('[RuleLog] save error:', err.message));
 
   if (!isTriggered) return;
 
