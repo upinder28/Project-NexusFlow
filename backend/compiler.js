@@ -54,8 +54,8 @@ function buildAdjacency(edges) {
   return adj;
 }
 
-function buildStreamChain(nodeId, adj, nodes, baseStream, wss, visited = new Set()) {
-  if (visited.has(nodeId)) return; // cycle guard
+function buildStreamChain(nodeId, adj, nodes, baseStream, wss, deviceId, visited = new Set()) {
+  if (visited.has(nodeId)) return;
   visited.add(nodeId);
 
   const targets = adj[nodeId] || [];
@@ -73,7 +73,7 @@ function buildStreamChain(nodeId, adj, nodes, baseStream, wss, visited = new Set
       const alertNode = targetNode;
       branchStream = branchStream.pipe(
         map((value) => {
-          triggerAlert(alertNode, value, wss);
+          triggerAlert(alertNode, value, wss, deviceId);
           return { value, alert: value >= (alertNode.data.threshold || 70) };
         })
       );
@@ -88,7 +88,7 @@ function buildStreamChain(nodeId, adj, nodes, baseStream, wss, visited = new Set
 
     activeSubscriptions.push(sub);
 
-    buildStreamChain(targetId, adj, nodes, branchStream, wss, visited);
+    buildStreamChain(targetId, adj, nodes, branchStream, wss, deviceId, visited);
   });
 }
 
@@ -111,7 +111,7 @@ function compileGraph(graph, wss) {
   const stream = getSensorStream(deviceId);
   const adj = buildAdjacency(edges);
 
-  buildStreamChain(sensorNode.id, adj, nodes, stream, wss);
+  buildStreamChain(sensorNode.id, adj, nodes, stream, wss, deviceId);
 
   pipelineStatus.active = true;
   pipelineStatus.deviceId = deviceId;

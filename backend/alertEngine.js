@@ -3,8 +3,8 @@ const RuleLog = require('./models/RuleLog');
 const COOLDOWN_MS = 30000;
 const lastAlertTime = {};
 
-function triggerAlert(node, value, wss) {
-  const { actionType = 'log', threshold = 70, label = 'Alert', deviceId = 'unknown' } = node.data;
+function triggerAlert(node, value, wss, deviceId = 'unknown') {
+  const { actionType = 'log', threshold = 70, label = 'Alert' } = node.data;
   const isTriggered = value >= threshold;
 
   const payload = {

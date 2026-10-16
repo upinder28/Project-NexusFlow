@@ -13,9 +13,13 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pipeline', require('./routes/pipeline'));
 
 const { compileGraph } = require('./compiler');
-app.post('/api/compile', (req, res) => {
+const Pipeline = require('./models/Pipeline');
+
+app.post('/api/compile', async (req, res) => {
   try {
     compileGraph(req.body, wss);
+    // Save graph to MongoDB (upsert — only one saved pipeline)
+    await Pipeline.findOneAndUpdate({}, { nodes: req.body.nodes, edges: req.body.edges, savedAt: new Date() }, { upsert: true });
     res.json({ success: true, message: 'Graph compiled and stream started' });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -23,7 +27,7 @@ app.post('/api/compile', (req, res) => {
 });
 
 connectDB()
-  .then(() => {
+  .then(async () => {
     const server = app.listen(process.env.PORT, () =>
       console.log(`Server running on port ${process.env.PORT}`)
     );
@@ -31,6 +35,17 @@ connectDB()
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
     });
     wss.on('connection', () => console.log('WebSocket client connected'));
+
+    // Auto-restart last saved pipeline
+    const saved = await Pipeline.findOne().sort({ savedAt: -1 });
+    if (saved) {
+      try {
+        compileGraph({ nodes: saved.nodes, edges: saved.edges }, wss);
+        console.log('Pipeline auto-restarted from saved graph');
+      } catch (err) {
+        console.error('Pipeline auto-restart failed:', err.message);
+      }
+    }
   })
   .catch((err) => {
     console.error('MongoDB connection failed:', err.message);
