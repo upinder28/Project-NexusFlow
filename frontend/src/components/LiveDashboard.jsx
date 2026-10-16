@@ -1,695 +1,94 @@
-import { useState, useEffect } from 'react';
-import {
-  AreaChart, Area, LineChart, Line, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
-} from 'recharts';
+import { useMemo } from 'react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer } from 'recharts';
 
-export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
-  const [telemetryStream, setTelemetryStream] = useState([]);
-  const [pipelineStream, setPipelineStream] = useState([]);
-  const [deviceStats, setDeviceStats] = useState({});
-  const [recentAlerts, setRecentAlerts] = useState([]);
-  const [webhooks, setWebhooks] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview'); // overview | pipeline | webhooks
-  const [backendStats, setBackendStats] = useState(null);
+const PALETTE = ['#38bdf8', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#60a5fa', '#f472b6', '#2dd4bf'];
+const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour12: false });
+const tip = { contentStyle: { background: '#0d1829', border: '1px solid #1e3a5f', borderRadius: 6, fontSize: 11 }, labelFormatter: fmtTime };
 
-  // Fetch backend stats & webhook logs periodically
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [statsRes, whRes] = await Promise.all([
-          fetch('http://localhost:5000/api/stats'),
-          fetch('http://localhost:5000/api/webhook/history'),
-        ]);
-        if (statsRes.ok) {
-          const data = await statsRes.json();
-          setBackendStats(data);
-        }
-        if (whRes.ok) {
-          const whData = await whRes.json();
-          setWebhooks(whData);
-        }
-      } catch (e) {
-        // backend might be starting
-      }
-    };
-
-    fetchStats();
-    const interval = setInterval(fetchStats, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // WebSocket listener for real-time charting
-  useEffect(() => {
-    const ws = new WebSocket('ws://localhost:5000');
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        // 1. Raw Telemetry Event
-        if (data.metadata && data.value !== undefined) {
-          const time = new Date(data.timestamp || Date.now()).toLocaleTimeString();
-          const dev = data.metadata.deviceId || 'device-1';
-          const val = Number(data.value);
-
-          setTelemetryStream((prev) => {
-            const next = [...prev, { time, value: val, deviceId: dev }];
-            return next.slice(-25); // keep 25 latest points for smooth real-time stream
-          });
-
-          setDeviceStats((prev) => {
-            const cur = prev[dev] || { count: 0, min: val, max: val, avg: val, sum: 0 };
-            const sum = cur.sum + val;
-            const count = cur.count + 1;
-            return {
-              ...prev,
-              [dev]: {
-                count,
-                sum,
-                min: Math.min(cur.min, val),
-                max: Math.max(cur.max, val),
-                avg: parseFloat((sum / count).toFixed(2)),
-              },
-            };
-          });
-        }
-
-        // 2. RxJS Node Execution Event
-        if (data.type === 'node_execution') {
-          const time = new Date(data.timestamp || Date.now()).toLocaleTimeString();
-          setPipelineStream((prev) => {
-            const next = [
-              ...prev,
-              {
-                time,
-                value: typeof data.value === 'number' ? data.value : 0,
-                source: data.sourceNodeId,
-                target: data.targetNodeId,
-              },
-            ];
-            return next.slice(-25);
-          });
-        }
-
-        // 3. Alert / Outbound webhook event
-        if (data.type === 'alert' && data.triggered) {
-          setRecentAlerts((prev) => [
-            {
-              id: Date.now() + Math.random(),
-              label: data.label,
-              value: data.value,
-              threshold: data.threshold,
-              actionType: data.actionType,
-              webhookUrl: data.webhookUrl,
-              time: new Date().toLocaleTimeString(),
-            },
-            ...prev,
-          ].slice(0, 20));
-        }
-      } catch (err) {
-        console.error('Error handling WebSocket dashboard message:', err);
-      }
-    };
-
-    return () => ws.close();
-  }, []);
-
-  const triggerTestWebhook = async () => {
-    try {
-      await fetch('http://localhost:5000/api/webhook/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: 'http://localhost:5000/api/webhook/receiver',
-          actionType: 'webhook',
-          payload: {
-            event: 'manual_test_dispatch',
-            sensor: 'Turbine Temperature',
-            value: 88.5,
-            message: 'Manual test from live dashboard',
-          },
-        }),
-      });
-      // Refresh history
-      const res = await fetch('http://localhost:5000/api/webhook/history');
-      if (res.ok) setWebhooks(await res.json());
-    } catch (e) {
-      alert('Could not trigger test webhook: ' + e.message);
-    }
-  };
-
+function Kpi({ label, value, color = '#e6edf3' }) {
   return (
-    <div style={styles.container}>
-      {/* ── Dashboard Header ── */}
-      <div style={styles.header}>
-        <div>
-          <h2 style={styles.title}>
-            <span style={{ marginRight: 8 }}>📊</span> Live Telemetry & Execution Dashboard
-          </h2>
-          <p style={styles.subtitle}>
-            Week 3 Real-time Recharts visualization + Week 4 Webhook Dispatch Monitor
-          </p>
-        </div>
-
-        <div style={styles.tabBar}>
-          <button
-            style={{ ...styles.tabBtn, ...(activeTab === 'overview' ? styles.tabBtnActive : {}) }}
-            onClick={() => setActiveTab('overview')}
-          >
-            Telemetry Overview
-          </button>
-          <button
-            style={{ ...styles.tabBtn, ...(activeTab === 'pipeline' ? styles.tabBtnActive : {}) }}
-            onClick={() => setActiveTab('pipeline')}
-          >
-            RxJS Pipeline Stream
-          </button>
-          <button
-            style={{ ...styles.tabBtn, ...(activeTab === 'webhooks' ? styles.tabBtnActive : {}) }}
-            onClick={() => setActiveTab('webhooks')}
-          >
-            Outbound Webhooks ({webhooks.length})
-          </button>
-        </div>
-      </div>
-
-      {/* ── KPI Stat Cards ── */}
-      <div style={styles.kpiGrid}>
-        <div style={styles.kpiCard}>
-          <span style={styles.kpiLabel}>INGESTION RATE</span>
-          <div style={styles.kpiValueRow}>
-            <span style={{ ...styles.kpiVal, color: '#38bdf8' }}>
-              {backendStats?.ingestRate ?? currentRate ?? 0}
-            </span>
-            <span style={styles.kpiUnit}>pts/sec</span>
-          </div>
-          <span style={styles.kpiHint}>MongoDB Time-Series Ingestion</span>
-        </div>
-
-        <div style={styles.kpiCard}>
-          <span style={styles.kpiLabel}>TOTAL INGESTED</span>
-          <div style={styles.kpiValueRow}>
-            <span style={{ ...styles.kpiVal, color: '#34d399' }}>
-              {(backendStats?.telemetryIngested ?? totalPoints ?? 0).toLocaleString()}
-            </span>
-            <span style={styles.kpiUnit}>data points</span>
-          </div>
-          <span style={styles.kpiHint}>Stored & evaluated in-memory</span>
-        </div>
-
-        <div style={styles.kpiCard}>
-          <span style={styles.kpiLabel}>ACTIVE STREAMS (RxJS)</span>
-          <div style={styles.kpiValueRow}>
-            <span style={{ ...styles.kpiVal, color: '#a78bfa' }}>
-              {backendStats?.activeSubscriptions ?? 0}
-            </span>
-            <span style={styles.kpiUnit}>pipelines</span>
-          </div>
-          <span style={styles.kpiHint}>Dynamic stream subscriptions</span>
-        </div>
-
-        <div style={styles.kpiCard}>
-          <span style={styles.kpiLabel}>ALERTS & WEBHOOKS</span>
-          <div style={styles.kpiValueRow}>
-            <span style={{ ...styles.kpiVal, color: '#fb7185' }}>
-              {(backendStats?.alertsFired ?? recentAlerts.length)}
-            </span>
-            <span style={styles.kpiUnit}>triggered</span>
-          </div>
-          <span style={styles.kpiHint}>
-            {backendStats?.webhooksSent ?? 0} outbound webhooks dispatched
-          </span>
-        </div>
-      </div>
-
-      {/* ── TAB 1: OVERVIEW ── */}
-      {activeTab === 'overview' && (
-        <div style={styles.mainGrid}>
-          {/* Real-time Telemetry Area Chart */}
-          <div style={styles.chartCard}>
-            <div style={styles.cardHeader}>
-              <span style={styles.cardTitle}>Live Sensor Telemetry Stream (Recharts)</span>
-              <span style={styles.badgeLive}>● Real-time (ws://localhost:5000)</span>
-            </div>
-            <div style={{ width: '100%', height: 260 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={telemetryStream}>
-                  <defs>
-                    <linearGradient id="telemetryGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="time" stroke="#64748b" fontSize={10} />
-                  <YAxis domain={['auto', 'auto']} stroke="#64748b" fontSize={10} unit="°C" />
-                  <Tooltip
-                    contentStyle={{ background: '#0a0d16', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11 }}
-                    itemStyle={{ color: '#38bdf8' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#38bdf8"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#telemetryGrad)"
-                    isAnimationActive={false}
-                    name="Temperature"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Device Aggregations & Health */}
-          <div style={styles.chartCard}>
-            <div style={styles.cardHeader}>
-              <span style={styles.cardTitle}>Device Telemetry Metrics</span>
-              <span style={styles.cardSub}>Min / Avg / Max</span>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              {Object.keys(deviceStats).length === 0 ? (
-                <div style={styles.emptyPrompt}>
-                  Waiting for simulator or hardware telemetry…
-                  <code style={styles.code}>npm run simulate</code>
-                </div>
-              ) : (
-                Object.entries(deviceStats).map(([dev, s]) => (
-                  <div key={dev} style={styles.deviceRow}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 13 }}>📡 {dev}</span>
-                      <span style={{ color: '#38bdf8', fontSize: 11 }}>{s.count} readings</span>
-                    </div>
-                    <div style={styles.metricsBar}>
-                      <span style={styles.metricItem}>Min: <b>{s.min}°C</b></span>
-                      <span style={styles.metricItem}>Avg: <b style={{ color: '#34d399' }}>{s.avg}°C</b></span>
-                      <span style={styles.metricItem}>Max: <b style={{ color: '#fb7185' }}>{s.max}°C</b></span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB 2: PIPELINE STREAM ── */}
-      {activeTab === 'pipeline' && (
-        <div style={styles.mainGrid}>
-          <div style={styles.chartCard}>
-            <div style={styles.cardHeader}>
-              <span style={styles.cardTitle}>Compiled RxJS Pipeline Real-Time Output</span>
-              <span style={styles.badgePurple}>● In-Memory Reactive Stream</span>
-            </div>
-            <div style={{ width: '100%', height: 260 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={pipelineStream}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="time" stroke="#64748b" fontSize={10} />
-                  <YAxis domain={['auto', 'auto']} stroke="#64748b" fontSize={10} />
-                  <Tooltip
-                    contentStyle={{ background: '#0a0d16', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11 }}
-                    itemStyle={{ color: '#a78bfa' }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#a78bfa"
-                    strokeWidth={2.5}
-                    dot={{ fill: '#a78bfa', r: 3 }}
-                    isAnimationActive={false}
-                    name="Pipeline Value"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div style={styles.chartCard}>
-            <div style={styles.cardHeader}>
-              <span style={styles.cardTitle}>Live Triggered Alerts</span>
-              <span style={styles.badgeRed}>{recentAlerts.length} Fired</span>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              {recentAlerts.length === 0 ? (
-                <div style={styles.emptyPrompt}>
-                  No rule threshold crossed yet.
-                  <span style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                    Deploy a rule with lower threshold to see it trigger in real-time.
-                  </span>
-                </div>
-              ) : (
-                recentAlerts.map((a) => (
-                  <div key={a.id} style={styles.alertRow}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 600, color: '#fb7185', fontSize: 12 }}>
-                        🚨 {a.label}
-                      </span>
-                      <span style={{ color: '#64748b', fontSize: 10 }}>{a.time}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                      Value: <b style={{ color: '#fb7185' }}>{a.value}°C</b> crossed threshold <b>{a.threshold}</b>
-                      {' '}(Action: <span style={{ textTransform: 'uppercase', color: '#38bdf8' }}>{a.actionType}</span>)
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB 3: WEBHOOKS & ALERTING ── */}
-      {activeTab === 'webhooks' && (
-        <div style={styles.webhookSection}>
-          <div style={styles.webhookHeaderRow}>
-            <div>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
-                🔗 Week 4: Outbound Integration Capabilities
-              </h3>
-              <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                NexusFlow triggers external Webhook endpoints, Mock SMS, and Email dispatches when dynamic rules evaluate to true.
-              </p>
-            </div>
-            <button style={styles.testBtn} onClick={triggerTestWebhook}>
-              ⚡ Trigger Test Webhook
-            </button>
-          </div>
-
-          <div style={styles.webhookTableCard}>
-            <div style={styles.cardHeader}>
-              <span style={styles.cardTitle}>Webhook & Notification Dispatch Log</span>
-              <span style={{ fontSize: 11, color: '#64748b' }}>Receiver endpoint: /api/webhook/receiver</span>
-            </div>
-
-            <div style={{ overflowX: 'auto' }}>
-              <table style={styles.whTable}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Time</th>
-                    <th style={styles.th}>Event / Target</th>
-                    <th style={styles.th}>Type</th>
-                    <th style={styles.th}>Payload Data</th>
-                    <th style={styles.th}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {webhooks.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: '#64748b', padding: 24 }}>
-                        No outbound webhooks recorded yet. Click "Trigger Test Webhook" or let an alert fire!
-                      </td>
-                    </tr>
-                  ) : (
-                    webhooks.map((wh) => (
-                      <tr key={wh.id || Math.random()}>
-                        <td style={styles.td}>
-                          {wh.timestamp ? new Date(wh.timestamp).toLocaleTimeString() : '—'}
-                        </td>
-                        <td style={{ ...styles.td, color: '#38bdf8' }}>
-                          {wh.url || wh.body?.rule || wh.body?.event || 'Inbound Webhook Receiver'}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={styles.typeBadge}>{wh.actionType || 'POST Webhook'}</span>
-                        </td>
-                        <td style={{ ...styles.td, fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
-                          {JSON.stringify(wh.payload || wh.body || {})}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={styles.statusSuccess}>● 200 OK</span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+    <div style={s.kpi}>
+      <span style={{ ...s.kpiVal, color }}>{value}</span>
+      <span style={s.kpiLbl}>{label}</span>
     </div>
   );
 }
 
-const styles = {
-  container: {
-    padding: '16px 20px',
-    background: '#060910',
-    minHeight: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-    color: '#f1f5f9',
-    fontFamily: 'Inter, sans-serif',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottom: '1px solid #1e293b',
-    paddingBottom: 14,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: '#f8fafc',
-    margin: 0,
-    letterSpacing: '-0.3px',
-  },
-  subtitle: {
-    fontSize: 12,
-    color: '#94a3b8',
-    margin: '3px 0 0 0',
-  },
-  tabBar: {
-    display: 'flex',
-    gap: 6,
-    background: '#0a0d16',
-    padding: 4,
-    borderRadius: 8,
-    border: '1px solid #1e293b',
-  },
-  tabBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: '#94a3b8',
-    padding: '6px 14px',
-    borderRadius: 6,
-    fontSize: 11,
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  tabBtnActive: {
-    background: '#1e293b',
-    color: '#38bdf8',
-  },
-  kpiGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 12,
-  },
-  kpiCard: {
-    background: '#0a0d16',
-    border: '1px solid #1e293b',
-    borderRadius: 10,
-    padding: '12px 14px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-  },
-  kpiLabel: {
-    fontSize: 10,
-    fontWeight: 700,
-    color: '#64748b',
-    letterSpacing: '0.8px',
-  },
-  kpiValueRow: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: 6,
-  },
-  kpiVal: {
-    fontSize: 24,
-    fontWeight: 800,
-    fontFamily: 'JetBrains Mono, monospace',
-    lineHeight: 1,
-  },
-  kpiUnit: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: 500,
-  },
-  kpiHint: {
-    fontSize: 10,
-    color: '#475569',
-    marginTop: 2,
-  },
-  mainGrid: {
-    display: 'grid',
-    gridTemplateColumns: '2fr 1fr',
-    gap: 14,
-    flex: 1,
-  },
-  chartCard: {
-    background: '#0a0d16',
-    border: '1px solid #1e293b',
-    borderRadius: 10,
-    padding: '14px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardTitle: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#e2e8f0',
-    letterSpacing: '-0.2px',
-  },
-  cardSub: {
-    fontSize: 10,
-    color: '#64748b',
-  },
-  badgeLive: {
-    fontSize: 10,
-    fontWeight: 600,
-    color: '#34d399',
-    background: 'rgba(52, 211, 153, 0.1)',
-    border: '1px solid rgba(52, 211, 153, 0.25)',
-    padding: '2px 8px',
-    borderRadius: 20,
-  },
-  badgePurple: {
-    fontSize: 10,
-    fontWeight: 600,
-    color: '#a78bfa',
-    background: 'rgba(167, 139, 250, 0.1)',
-    border: '1px solid rgba(167, 139, 250, 0.25)',
-    padding: '2px 8px',
-    borderRadius: 20,
-  },
-  badgeRed: {
-    fontSize: 10,
-    fontWeight: 600,
-    color: '#fb7185',
-    background: 'rgba(251, 113, 133, 0.1)',
-    border: '1px solid rgba(251, 113, 133, 0.25)',
-    padding: '2px 8px',
-    borderRadius: 20,
-  },
-  emptyPrompt: {
-    padding: 24,
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: 12,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 8,
-  },
-  code: {
-    background: '#1e293b',
-    color: '#38bdf8',
-    padding: '2px 6px',
-    borderRadius: 4,
-    fontSize: 11,
-    fontFamily: 'JetBrains Mono, monospace',
-  },
-  deviceRow: {
-    background: 'rgba(255, 255, 255, 0.02)',
-    border: '1px solid #1e293b',
-    borderRadius: 8,
-    padding: '8px 10px',
-    marginBottom: 8,
-  },
-  metricsBar: {
-    display: 'flex',
-    gap: 12,
-    fontSize: 11,
-    color: '#94a3b8',
-  },
-  metricItem: {
-    fontFamily: 'JetBrains Mono, monospace',
-  },
-  alertRow: {
-    background: 'rgba(251, 113, 133, 0.05)',
-    border: '1px solid rgba(251, 113, 133, 0.2)',
-    borderRadius: 8,
-    padding: '8px 10px',
-    marginBottom: 8,
-  },
-  webhookSection: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  webhookHeaderRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    background: '#0a0d16',
-    border: '1px solid #1e293b',
-    borderRadius: 10,
-    padding: '12px 16px',
-  },
-  testBtn: {
-    background: 'linear-gradient(135deg, #1e3a5f, #2563eb)',
-    color: '#fff',
-    border: '1px solid #38bdf8',
-    borderRadius: 6,
-    padding: '6px 14px',
-    fontSize: 11,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  webhookTableCard: {
-    background: '#0a0d16',
-    border: '1px solid #1e293b',
-    borderRadius: 10,
-    padding: '14px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  whTable: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: 11,
-  },
-  th: {
-    textAlign: 'left',
-    padding: '8px 12px',
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: '0.8px',
-    borderBottom: '1px solid #1e293b',
-  },
-  td: {
-    padding: '8px 12px',
-    color: '#cbd5e1',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
-  },
-  typeBadge: {
-    background: 'rgba(56, 189, 248, 0.1)',
-    border: '1px solid rgba(56, 189, 248, 0.3)',
-    color: '#38bdf8',
-    padding: '2px 6px',
-    borderRadius: 4,
-    fontSize: 9,
-    fontWeight: 600,
-  },
-  statusSuccess: {
-    color: '#34d399',
-    fontWeight: 600,
-    fontSize: 11,
-  },
+// Live charts (Recharts) fed by the WebSocket: per-node values + ingestion throughput.
+export default function LiveDashboard({ live, nodes }) {
+  const series = useMemo(() => {
+    const ids = new Set();
+    live.frames.forEach((f) => Object.keys(f).forEach((k) => !['t', 'ingest', 'persist'].includes(k) && ids.add(k)));
+    return [...ids].slice(0, 8).map((id, i) => {
+      const n = nodes.find((x) => x.id === id);
+      return { id, name: n?.data?.label || n?.type || id, color: PALETTE[i % PALETTE.length] };
+    });
+  }, [live.frames, nodes]);
+
+  const st = live.ingest;
+  const sent = live.deliveries.filter((d) => d.status === 'sent').length;
+  const failed = live.deliveries.filter((d) => d.status === 'failed' || d.status === 'blocked').length;
+  const nf = (v) => (v ?? 0).toLocaleString();
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.kpis}>
+        <Kpi label="ingest / s" value={nf(st?.ingestPerSec)} color="#38bdf8" />
+        <Kpi label="persisted / s" value={nf(st?.persistPerSec)} color="#34d399" />
+        <Kpi label="buffered" value={nf(st?.buffered)} color={st?.buffered > 50000 ? '#fb7185' : '#e6edf3'} />
+        <Kpi label="received" value={nf(st?.received)} />
+        <Kpi label="rejected" value={nf(st?.rejected)} color={st?.rejected ? '#fbbf24' : '#e6edf3'} />
+        <Kpi label="alerts" value={live.alerts.length} color="#fb7185" />
+        <Kpi label="deliveries ok" value={sent} color="#34d399" />
+        <Kpi label="failed" value={failed} color={failed ? '#fb7185' : '#e6edf3'} />
+      </div>
+      <div style={s.charts}>
+        <div style={s.chart}>
+          <div style={s.title}>Node values (live)</div>
+          {series.length === 0 ? (
+            <div style={s.empty}>Deploy a pipeline — values appear here.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={live.frames} margin={{ top: 4, right: 12, left: -16, bottom: 0 }}>
+                <CartesianGrid stroke="#ffffff0d" vertical={false} />
+                <XAxis dataKey="t" tickFormatter={fmtTime} tick={{ fontSize: 9, fill: '#6e7681' }} minTickGap={40} />
+                <YAxis tick={{ fontSize: 9, fill: '#6e7681' }} domain={['auto', 'auto']} />
+                <Tooltip {...tip} />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+                {series.map((x) => (
+                  <Line key={x.id} type="monotone" dataKey={x.id} name={x.name} stroke={x.color} strokeWidth={1.6} dot={false} isAnimationActive={false} connectNulls />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div style={s.chart}>
+          <div style={s.title}>Ingestion throughput (writes / s)</div>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={live.frames} margin={{ top: 4, right: 12, left: -8, bottom: 0 }}>
+              <CartesianGrid stroke="#ffffff0d" vertical={false} />
+              <XAxis dataKey="t" tickFormatter={fmtTime} tick={{ fontSize: 9, fill: '#6e7681' }} minTickGap={40} />
+              <YAxis tick={{ fontSize: 9, fill: '#6e7681' }} allowDecimals={false} />
+              <Tooltip {...tip} />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Line type="monotone" dataKey="ingest" name="accepted" stroke="#38bdf8" strokeWidth={1.6} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="persist" name="written to DB" stroke="#34d399" strokeWidth={1.6} dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const s = {
+  wrap: { display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 16px 12px', height: 270 },
+  kpis: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  kpi: { display: 'flex', alignItems: 'baseline', gap: 5, padding: '3px 10px', background: '#ffffff06', border: '1px solid #ffffff0a', borderRadius: 8 },
+  kpiVal: { fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' },
+  kpiLbl: { fontSize: 10, color: '#6e7681' },
+  charts: { display: 'flex', gap: 12, flex: 1, minHeight: 0 },
+  chart: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' },
+  title: { fontSize: 10, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 4 },
+  empty: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 11 },
 };
