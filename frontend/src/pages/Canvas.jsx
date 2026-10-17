@@ -126,6 +126,7 @@ export default function Canvas({ user, onLogout }) {
   const [alertLog, setAlertLog] = useState([]);
   const [telemetryRows, setTelemetryRows] = useState([]);
   const [showTable, setShowTable] = useState(false);
+  const [activeSubs, setActiveSubs] = useState(0);
   const valuesRef = useRef({});
   const historyRef = useRef({});
   const rateRef = useRef(0);
@@ -239,13 +240,23 @@ export default function Canvas({ user, onLogout }) {
 
   const handleCompile = async () => {
     setCompileStatus('compiling');
+    const token = localStorage.getItem('nf_token');
     try {
       const res = await fetch('http://localhost:5000/api/compile', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ nodes, edges }),
       });
-      if (res.ok) setCompileStatus('running');
-      else setCompileStatus('failed');
+      if (res.ok) {
+        setCompileStatus('running');
+        const statusRes = await fetch('http://localhost:5000/api/pipeline/status', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (statusRes.ok) {
+          const status = await statusRes.json();
+          setActiveSubs(status.activeSubscriptions || 0);
+        }
+      } else setCompileStatus('failed');
     } catch (e) { setCompileStatus('failed'); }
   };
 
@@ -286,6 +297,7 @@ export default function Canvas({ user, onLogout }) {
           <div style={s.statChip}><span style={s.statVal}>{dataRate}</span><span style={s.statLbl}>pts/s</span></div>
           <div style={s.statChip}><span style={s.statVal}>{totalPoints.toLocaleString()}</span><span style={s.statLbl}>total</span></div>
           <div style={s.statChip}><span style={s.statVal}>{nodes.length}</span><span style={s.statLbl}>nodes</span></div>
+          {activeSubs > 0 && <div style={s.statChip}><span style={{ ...s.statVal, color: '#34d399' }}>{activeSubs}</span><span style={s.statLbl}>streams</span></div>}
         </div>
 
         <div style={s.navRight}>
