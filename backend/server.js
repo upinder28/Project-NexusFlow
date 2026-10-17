@@ -14,8 +14,9 @@ app.use('/api/pipeline', require('./routes/pipeline'));
 
 const { compileGraph } = require('./compiler');
 const Pipeline = require('./models/Pipeline');
+const authMiddleware = require('./middleware/auth');
 
-app.post('/api/compile', async (req, res) => {
+app.post('/api/compile', authMiddleware, async (req, res) => {
   try {
     compileGraph(req.body, wss);
     // Save graph to MongoDB (upsert — only one saved pipeline)
