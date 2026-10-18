@@ -14,7 +14,7 @@ import AddNode from '../nodes/AddNode';
 import MovingAverageNode from '../nodes/MovingAverageNode';
 import SmsAlertNode from '../nodes/SmsAlertNode';
 import EmailAlertNode from '../nodes/EmailAlertNode';
-import LogAlertNode from '../nodes/LogAlertNode';
+import LiveChart from '../components/LiveChart';
 
 const nodeTypes = {
   sensor: SensorNode, filter: FilterNode, alert: AlertNode,
@@ -400,6 +400,11 @@ export default function Canvas({ user, onLogout }) {
                 maskColor="rgba(6,8,15,0.75)"
               />
             </ReactFlow>
+          </div>
+
+          {/* ── LIVE CHART ── */}
+          <div style={{ padding: '10px 12px', background: '#06080f', borderTop: '1px solid #ffffff08' }}>
+            <LiveChart deviceId="device-1" threshold={85} />
           </div>
 
           {/* ── TELEMETRY TABLE ── */}
