@@ -10,8 +10,17 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
   const [deviceStats, setDeviceStats] = useState({});
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [webhooks, setWebhooks] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview'); // overview | pipeline | webhooks
+  const [activeTab, setActiveTab] = useState('overview'); // overview | pipeline | devices | webhooks
   const [backendStats, setBackendStats] = useState(null);
+  const [deviceCharts, setDeviceCharts] = useState({});
+  const [deviceLastSeen, setDeviceLastSeen] = useState({});
+
+  const DEVICE_COLORS = ['#34d399', '#38bdf8', '#a78bfa', '#fb923c', '#f472b6', '#facc15'];
+  const getDeviceColor = (dev) => {
+    const keys = Object.keys(deviceCharts);
+    const idx = keys.indexOf(dev);
+    return DEVICE_COLORS[idx % DEVICE_COLORS.length];
+  };
 
   // Fetch backend stats & webhook logs periodically
   useEffect(() => {
@@ -39,80 +48,42 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
     return () => clearInterval(interval);
   }, []);
 
-  // WebSocket listener for real-time charting
+  // WebSocket auto-reconnect
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:5000');
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        // 1. Raw Telemetry Event
-        if (data.metadata && data.value !== undefined) {
-          const time = new Date(data.timestamp || Date.now()).toLocaleTimeString();
-          const dev = data.metadata.deviceId || 'device-1';
-          const val = Number(data.value);
-
-          setTelemetryStream((prev) => {
-            const next = [...prev, { time, value: val, deviceId: dev }];
-            return next.slice(-25); // keep 25 latest points for smooth real-time stream
-          });
-
-          setDeviceStats((prev) => {
-            const cur = prev[dev] || { count: 0, min: val, max: val, avg: val, sum: 0 };
-            const sum = cur.sum + val;
-            const count = cur.count + 1;
-            return {
-              ...prev,
-              [dev]: {
-                count,
-                sum,
-                min: Math.min(cur.min, val),
-                max: Math.max(cur.max, val),
-                avg: parseFloat((sum / count).toFixed(2)),
-              },
-            };
-          });
-        }
-
-        // 2. RxJS Node Execution Event
-        if (data.type === 'node_execution') {
-          const time = new Date(data.timestamp || Date.now()).toLocaleTimeString();
-          setPipelineStream((prev) => {
-            const next = [
-              ...prev,
-              {
-                time,
-                value: typeof data.value === 'number' ? data.value : 0,
-                source: data.sourceNodeId,
-                target: data.targetNodeId,
-              },
-            ];
-            return next.slice(-25);
-          });
-        }
-
-        // 3. Alert / Outbound webhook event
-        if (data.type === 'alert' && data.triggered) {
-          setRecentAlerts((prev) => [
-            {
-              id: Date.now() + Math.random(),
-              label: data.label,
-              value: data.value,
-              threshold: data.threshold,
-              actionType: data.actionType,
-              webhookUrl: data.webhookUrl,
-              time: new Date().toLocaleTimeString(),
-            },
-            ...prev,
-          ].slice(0, 20));
-        }
-      } catch (err) {
-        console.error('Error handling WebSocket dashboard message:', err);
-      }
+    let ws;
+    let retryTimer;
+    const connect = () => {
+      ws = new WebSocket('ws://localhost:5000');
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.metadata && data.value !== undefined) {
+            const time = new Date(data.timestamp || Date.now()).toLocaleTimeString();
+            const dev = data.metadata.deviceId || 'device-1';
+            const val = Number(data.value);
+            setTelemetryStream((prev) => [...prev, { time, value: val, deviceId: dev }].slice(-25));
+            setDeviceCharts((prev) => ({ ...prev, [dev]: [...(prev[dev] || []), { time, value: val }].slice(-20) }));
+            setDeviceLastSeen((prev) => ({ ...prev, [dev]: new Date().toLocaleTimeString() }));
+            setDeviceStats((prev) => {
+              const cur = prev[dev] || { count: 0, min: val, max: val, avg: val, sum: 0 };
+              const sum = cur.sum + val;
+              const count = cur.count + 1;
+              return { ...prev, [dev]: { count, sum, min: Math.min(cur.min, val), max: Math.max(cur.max, val), avg: parseFloat((sum / count).toFixed(2)) } };
+            });
+          }
+          if (data.type === 'node_execution') {
+            const time = new Date(data.timestamp || Date.now()).toLocaleTimeString();
+            setPipelineStream((prev) => [...prev, { time, value: typeof data.value === 'number' ? data.value : 0, source: data.sourceNodeId, target: data.targetNodeId }].slice(-25));
+          }
+          if (data.type === 'alert' && data.triggered) {
+            setRecentAlerts((prev) => [{ id: Date.now() + Math.random(), label: data.label, value: data.value, threshold: data.threshold, actionType: data.actionType, webhookUrl: data.webhookUrl, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 20));
+          }
+        } catch (err) { console.error('WS parse error:', err); }
+      };
+      ws.onclose = () => { retryTimer = setTimeout(connect, 3000); };
     };
-
-    return () => ws.close();
+    connect();
+    return () => { ws?.close(); clearTimeout(retryTimer); };
   }, []);
 
   const triggerTestWebhook = async () => {
@@ -164,6 +135,12 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
             onClick={() => setActiveTab('pipeline')}
           >
             RxJS Pipeline Stream
+          </button>
+          <button
+            style={{ ...styles.tabBtn, ...(activeTab === 'devices' ? styles.tabBtnActive : {}) }}
+            onClick={() => setActiveTab('devices')}
+          >
+            Per-Device Charts ({Object.keys(deviceCharts).length})
           </button>
           <button
             style={{ ...styles.tabBtn, ...(activeTab === 'webhooks' ? styles.tabBtnActive : {}) }}
@@ -279,12 +256,12 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
                 Object.entries(deviceStats).map(([dev, s]) => (
                   <div key={dev} style={styles.deviceRow}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 13 }}>📡 {dev}</span>
-                      <span style={{ color: '#38bdf8', fontSize: 11 }}>{s.count} readings</span>
+                      <span style={{ fontWeight: 600, color: getDeviceColor(dev), fontSize: 13 }}>📡 {dev}</span>
+                      <span style={{ color: '#64748b', fontSize: 10 }}>{s.count} pts · last {deviceLastSeen[dev] || '—'}</span>
                     </div>
                     <div style={styles.metricsBar}>
                       <span style={styles.metricItem}>Min: <b>{s.min}°C</b></span>
-                      <span style={styles.metricItem}>Avg: <b style={{ color: '#34d399' }}>{s.avg}°C</b></span>
+                      <span style={styles.metricItem}>Avg: <b style={{ color: getDeviceColor(dev) }}>{s.avg}°C</b></span>
                       <span style={styles.metricItem}>Max: <b style={{ color: '#fb7185' }}>{s.max}°C</b></span>
                     </div>
                   </div>
@@ -361,7 +338,64 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
         </div>
       )}
 
-      {/* ── TAB 3: WEBHOOKS & ALERTING ── */}
+      {/* ── TAB 3: PER-DEVICE CHARTS ── */}
+      {activeTab === 'devices' && (
+        <div style={styles.deviceChartsGrid}>
+          {Object.keys(deviceCharts).length === 0 ? (
+            <div style={{ ...styles.chartCard, ...styles.emptyPrompt }}>
+              No device data yet. Start the simulator to see per-device charts.
+              <code style={styles.code}>npm run simulate</code>
+            </div>
+          ) : (
+            Object.entries(deviceCharts).map(([dev, points]) => {
+              const s = deviceStats[dev];
+              const color = getDeviceColor(dev);
+              return (
+                <div key={dev} style={styles.chartCard}>
+                  <div style={styles.cardHeader}>
+                    <span style={styles.cardTitle}>📡 {dev}</span>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {s && (
+                        <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'JetBrains Mono, monospace' }}>
+                          min <b style={{ color: '#38bdf8' }}>{s.min}</b> · avg <b style={{ color }}>{s.avg}</b> · max <b style={{ color: '#fb7185' }}>{s.max}</b> °C
+                        </span>
+                      )}
+                      {deviceLastSeen[dev] && (
+                        <span style={{ fontSize: 9, color: '#475569' }}>last: {deviceLastSeen[dev]}</span>
+                      )}
+                      <span style={{ ...styles.badgeLive, color, borderColor: color, background: `${color}18` }}>● Live</span>
+                    </div>
+                  </div>
+                  <div style={{ width: '100%', height: 180 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={points}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="time" stroke="#64748b" fontSize={9} tick={{ fill: '#64748b' }} />
+                        <YAxis domain={['auto', 'auto']} stroke="#64748b" fontSize={9} unit="°C" />
+                        <Tooltip
+                          contentStyle={{ background: '#0a0d16', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11 }}
+                          itemStyle={{ color }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke={color}
+                          strokeWidth={2}
+                          dot={false}
+                          isAnimationActive={false}
+                          name="Temperature"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 4: WEBHOOKS & ALERTING ── */}
       {activeTab === 'webhooks' && (
         <div style={styles.webhookSection}>
           <div style={styles.webhookHeaderRow}>
@@ -624,6 +658,11 @@ const styles = {
     borderRadius: 8,
     padding: '8px 10px',
     marginBottom: 8,
+  },
+  deviceChartsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
+    gap: 14,
   },
   webhookSection: {
     display: 'flex',
