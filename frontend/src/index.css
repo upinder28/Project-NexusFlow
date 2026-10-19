@@ -68,3 +68,10 @@ body {
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ---- Week 4: wires glow when data passes ---- */
+.nf-glow { fill: none; stroke-width: 4; stroke-linecap: round; opacity: 0; animation: nf-glow 0.9s ease-out; filter: drop-shadow(0 0 4px currentColor); }
+.nf-dot { filter: drop-shadow(0 0 4px #fff); animation: nf-dot 0.8s ease-out forwards; }
+@keyframes nf-glow { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+@keyframes nf-dot { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .nf-glow, .nf-dot { animation: none; opacity: 0; } }
