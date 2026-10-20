@@ -1,4 +1,5 @@
 const RuleLog = require('./models/RuleLog');
+const { pipelineStatus } = require('./compiler');
 
 const COOLDOWN_MS = 30000;
 const lastAlertTime = {};
@@ -27,6 +28,8 @@ function triggerAlert(node, value, wss, deviceId = 'unknown') {
     .catch((err) => console.error('[RuleLog] save error:', err.message));
 
   if (!isTriggered) return;
+
+  pipelineStatus.alertsFired += 1;
 
   const key = node.id;
   const now = Date.now();

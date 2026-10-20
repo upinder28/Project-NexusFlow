@@ -1,6 +1,7 @@
 const Telemetry = require('../models/Telemetry');
 const wss = require('../wss');
 const { pushToStream } = require('../streamEngine');
+const { pipelineStatus, trackIngest } = require('../compiler');
 
 const insertTelemetry = async (req, res) => {
   try {
@@ -21,6 +22,8 @@ const insertTelemetry = async (req, res) => {
     });
 
     pushToStream(deviceId, value);
+    pipelineStatus.telemetryIngested += 1;
+    trackIngest();
 
     res.status(201).json(doc);
   } catch (err) {

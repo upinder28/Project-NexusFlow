@@ -10,7 +10,7 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
   const [deviceStats, setDeviceStats] = useState({});
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [webhooks, setWebhooks] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview'); // overview | pipeline | devices | webhooks
+  const [activeTab, setActiveTab] = useState('overview'); // overview | pipeline | devices | alerts
   const [backendStats, setBackendStats] = useState(null);
   const [deviceCharts, setDeviceCharts] = useState({});
   const [deviceLastSeen, setDeviceLastSeen] = useState({});
@@ -22,29 +22,19 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
     return DEVICE_COLORS[idx % DEVICE_COLORS.length];
   };
 
-  // Fetch backend stats & webhook logs periodically
+  // Fetch pipeline status periodically
   useEffect(() => {
+    const token = localStorage.getItem('nf_token');
     const fetchStats = async () => {
       try {
-        const [statsRes, whRes] = await Promise.all([
-          fetch('http://localhost:5000/api/stats'),
-          fetch('http://localhost:5000/api/webhook/history'),
-        ]);
-        if (statsRes.ok) {
-          const data = await statsRes.json();
-          setBackendStats(data);
-        }
-        if (whRes.ok) {
-          const whData = await whRes.json();
-          setWebhooks(whData);
-        }
-      } catch (e) {
-        // backend might be starting
-      }
+        const res = await fetch('http://localhost:5000/api/pipeline/status', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (res.ok) setBackendStats(await res.json());
+      } catch (e) {}
     };
-
     fetchStats();
-    const interval = setInterval(fetchStats, 2000);
+    const interval = setInterval(fetchStats, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -86,31 +76,7 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
     return () => { ws?.close(); clearTimeout(retryTimer); };
   }, []);
 
-  const triggerTestWebhook = async () => {
-    try {
-      await fetch('http://localhost:5000/api/webhook/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: 'http://localhost:5000/api/webhook/receiver',
-          actionType: 'webhook',
-          payload: {
-            event: 'manual_test_dispatch',
-            sensor: 'Turbine Temperature',
-            value: 88.5,
-            message: 'Manual test from live dashboard',
-          },
-        }),
-      });
-      // Refresh history
-      const res = await fetch('http://localhost:5000/api/webhook/history');
-      if (res.ok) setWebhooks(await res.json());
-    } catch (e) {
-      alert('Could not trigger test webhook: ' + e.message);
-    }
-  };
-
-  return (
+return (
     <div style={styles.container}>
       {/* ── Dashboard Header ── */}
       <div style={styles.header}>
@@ -143,10 +109,10 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
             Per-Device Charts ({Object.keys(deviceCharts).length})
           </button>
           <button
-            style={{ ...styles.tabBtn, ...(activeTab === 'webhooks' ? styles.tabBtnActive : {}) }}
-            onClick={() => setActiveTab('webhooks')}
+            style={{ ...styles.tabBtn, ...(activeTab === 'alerts' ? styles.tabBtnActive : {}) }}
+            onClick={() => setActiveTab('alerts')}
           >
-            Outbound Webhooks ({webhooks.length})
+            Alert History
           </button>
         </div>
       </div>
@@ -395,70 +361,52 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
         </div>
       )}
 
-      {/* ── TAB 4: WEBHOOKS & ALERTING ── */}
-      {activeTab === 'webhooks' && (
-        <div style={styles.webhookSection}>
-          <div style={styles.webhookHeaderRow}>
-            <div>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
-                🔗 Week 4: Outbound Integration Capabilities
-              </h3>
-              <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                NexusFlow triggers external Webhook endpoints, Mock SMS, and Email dispatches when dynamic rules evaluate to true.
-              </p>
+      {/* ── TAB 4: ALERT HISTORY CHART ── */}
+      {activeTab === 'alerts' && (
+        <div style={styles.mainGrid}>
+          <div style={styles.chartCard}>
+            <div style={styles.cardHeader}>
+              <span style={styles.cardTitle}>Alert Triggers Over Time</span>
+              <span style={styles.badgeRed}>● Rule Execution Log</span>
             </div>
-            <button style={styles.testBtn} onClick={triggerTestWebhook}>
-              ⚡ Trigger Test Webhook
-            </button>
+            <div style={{ width: '100%', height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={recentAlerts.slice().reverse().map((a, i) => ({ name: a.time, value: a.value, threshold: a.threshold }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={9} />
+                  <YAxis stroke="#64748b" fontSize={9} unit="°C" />
+                  <Tooltip
+                    contentStyle={{ background: '#0a0d16', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11 }}
+                    itemStyle={{ color: '#fb7185' }}
+                  />
+                  <Bar dataKey="value" fill="#fb7185" radius={[4, 4, 0, 0]} name="Triggered Value" isAnimationActive={false} />
+                  <Bar dataKey="threshold" fill="#38bdf840" radius={[4, 4, 0, 0]} name="Threshold" isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          <div style={styles.webhookTableCard}>
+          <div style={styles.chartCard}>
             <div style={styles.cardHeader}>
-              <span style={styles.cardTitle}>Webhook & Notification Dispatch Log</span>
-              <span style={{ fontSize: 11, color: '#64748b' }}>Receiver endpoint: /api/webhook/receiver</span>
+              <span style={styles.cardTitle}>Alert Summary</span>
+              <span style={styles.badgeRed}>{recentAlerts.length} total</span>
             </div>
-
-            <div style={{ overflowX: 'auto' }}>
-              <table style={styles.whTable}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Time</th>
-                    <th style={styles.th}>Event / Target</th>
-                    <th style={styles.th}>Type</th>
-                    <th style={styles.th}>Payload Data</th>
-                    <th style={styles.th}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {webhooks.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: '#64748b', padding: 24 }}>
-                        No outbound webhooks recorded yet. Click "Trigger Test Webhook" or let an alert fire!
-                      </td>
-                    </tr>
-                  ) : (
-                    webhooks.map((wh) => (
-                      <tr key={wh.id || Math.random()}>
-                        <td style={styles.td}>
-                          {wh.timestamp ? new Date(wh.timestamp).toLocaleTimeString() : '—'}
-                        </td>
-                        <td style={{ ...styles.td, color: '#38bdf8' }}>
-                          {wh.url || wh.body?.rule || wh.body?.event || 'Inbound Webhook Receiver'}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={styles.typeBadge}>{wh.actionType || 'POST Webhook'}</span>
-                        </td>
-                        <td style={{ ...styles.td, fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
-                          {JSON.stringify(wh.payload || wh.body || {})}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={styles.statusSuccess}>● 200 OK</span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {recentAlerts.length === 0 ? (
+                <div style={styles.emptyPrompt}>No alerts triggered yet.</div>
+              ) : (
+                recentAlerts.map((a) => (
+                  <div key={a.id} style={styles.alertRow}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 600, color: '#fb7185', fontSize: 12 }}>🚨 {a.label}</span>
+                      <span style={{ color: '#64748b', fontSize: 10 }}>{a.time}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                      Value: <b style={{ color: '#fb7185' }}>{a.value}°C</b> · threshold <b>{a.threshold}</b> · <span style={{ color: '#38bdf8', textTransform: 'uppercase' }}>{a.actionType}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

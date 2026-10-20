@@ -10,7 +10,7 @@ export default function LiveChart({ deviceId = 'device-1', threshold = 85 }) {
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'alert' || msg.type === 'compiled') return;
+      if (msg.type === 'alert' || msg.type === 'node_execution') return;
       const { metadata, value } = msg;
       if (metadata?.deviceId !== deviceId || value === undefined) return;
 
