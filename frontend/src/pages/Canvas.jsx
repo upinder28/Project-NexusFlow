@@ -14,7 +14,9 @@ import AddNode from '../nodes/AddNode';
 import MovingAverageNode from '../nodes/MovingAverageNode';
 import SmsAlertNode from '../nodes/SmsAlertNode';
 import EmailAlertNode from '../nodes/EmailAlertNode';
+import LogAlertNode from '../nodes/LogAlertNode';
 import LiveChart from '../components/LiveChart';
+import LiveDashboard from '../components/LiveDashboard';
 
 const nodeTypes = {
   sensor: SensorNode, filter: FilterNode, alert: AlertNode,
@@ -127,6 +129,7 @@ export default function Canvas({ user, onLogout }) {
   const [telemetryRows, setTelemetryRows] = useState([]);
   const [showTable, setShowTable] = useState(false);
   const [activeSubs, setActiveSubs] = useState(0);
+  const [showDashboard, setShowDashboard] = useState(false);
   const valuesRef = useRef({});
   const historyRef = useRef({});
   const rateRef = useRef(0);
@@ -302,6 +305,7 @@ export default function Canvas({ user, onLogout }) {
 
         <div style={s.navRight}>
           <button style={s.btnGhost} onClick={() => setLocked(l => !l)}>{locked ? '🔒' : '🔓'} {locked ? 'Locked' : 'Unlocked'}</button>
+          <button style={s.btnGhost} onClick={() => setShowDashboard(d => !d)}>📊 {showDashboard ? 'Hide Dashboard' : 'Dashboard'}</button>
           <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
           <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
           {user && <span style={s.userChip}>👤 {user.name}</span>}
@@ -406,6 +410,13 @@ export default function Canvas({ user, onLogout }) {
           <div style={{ padding: '10px 12px', background: '#06080f', borderTop: '1px solid #ffffff08' }}>
             <LiveChart deviceId="device-1" threshold={85} />
           </div>
+
+          {/* ── LIVE DASHBOARD ── */}
+          {showDashboard && (
+            <div style={{ borderTop: '1px solid #ffffff08', overflowY: 'auto', maxHeight: 520 }}>
+              <LiveDashboard isLive={isLive} currentRate={dataRate} totalPoints={totalPoints} />
+            </div>
+          )}
 
           {/* ── TELEMETRY TABLE ── */}
           <div style={s.tableWrap}>

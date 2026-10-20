@@ -3,7 +3,12 @@ const { getSensorStream } = require('./streamEngine');
 const { triggerAlert } = require('./alertEngine');
 
 const activeSubscriptions = [];
-const pipelineStatus = { active: false, deviceId: null, nodeCount: 0, edgeCount: 0, compiledAt: null };
+const pipelineStatus = { active: false, deviceId: null, nodeCount: 0, edgeCount: 0, compiledAt: null, telemetryIngested: 0, alertsFired: 0, ingestRate: 0 };
+
+let _rateCount = 0;
+setInterval(() => { pipelineStatus.ingestRate = _rateCount; _rateCount = 0; }, 1000);
+
+function trackIngest() { _rateCount += 1; }
 
 function validateGraph(nodes, edges) {
   const nodeIds = new Set(nodes.map((n) => n.id));
@@ -80,9 +85,11 @@ function buildStreamChain(nodeId, adj, nodes, baseStream, wss, deviceId, visited
     }
 
     const sub = branchStream.subscribe((result) => {
-      const payload = typeof result === 'object' ? result : { value: result };
+      const value = typeof result === 'object' ? result.value : result;
+      const payload = { type: 'node_execution', sourceNodeId: nodeId, targetNodeId: targetId, value, timestamp: new Date().toISOString() };
+      if (typeof result === 'object') Object.assign(payload, result);
       wss.clients.forEach((client) => {
-        if (client.readyState === 1) client.send(JSON.stringify({ type: 'compiled', ...payload }));
+        if (client.readyState === 1) client.send(JSON.stringify(payload));
       });
     });
 
@@ -120,4 +127,4 @@ function compileGraph(graph, wss) {
   pipelineStatus.compiledAt = new Date().toISOString();
 }
 
-module.exports = { compileGraph, pipelineStatus, activeSubscriptions };
+module.exports = { compileGraph, pipelineStatus, activeSubscriptions, trackIngest };
