@@ -17,6 +17,7 @@ export default function EmailAlertNode({ data }) {
           <div style={s.label}>{data.label || 'Email Alert'}</div>
         </div>
         <div style={s.badge}>ACTION</div>
+        {data.onDelete && <button style={s.del} onClick={data.onDelete}>✕</button>}
       </div>
       <div style={s.divider} />
       <div style={s.valueRow}>
@@ -59,4 +60,5 @@ const s = {
   status: { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 7, border: '1px solid', transition: 'all 0.3s' },
   dot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0, transition: 'background 0.3s' },
   handle: { border: '2px solid #06080f', width: 10, height: 10 },
+  del: { marginLeft: 4, background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1, fontFamily: 'Inter, sans-serif' },
 };
