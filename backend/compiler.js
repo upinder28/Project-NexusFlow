@@ -74,7 +74,7 @@ function buildStreamChain(nodeId, adj, nodes, baseStream, wss, deviceId, visited
       branchStream = applyMathOperation(branchStream, targetNode);
     }
 
-    if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(targetNode.type)) {
+    if (['alert', 'smsAlert', 'emailAlert', 'logAlert', 'webhookAlert'].includes(targetNode.type)) {
       const alertNode = targetNode;
       branchStream = branchStream.pipe(
         map((value) => {
@@ -108,6 +108,8 @@ function compileGraph(graph, wss) {
   // Cleanup previous pipeline
   activeSubscriptions.forEach((s) => s.unsubscribe());
   activeSubscriptions.length = 0;
+  pipelineStatus.telemetryIngested = 0;
+  pipelineStatus.alertsFired = 0;
 
   const sensorNode = nodes.find(
     (n) => n.type === 'sensor' || n.type === 'simulatorSource' || n.type === 'httpSource'

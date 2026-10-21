@@ -17,13 +17,18 @@ import EmailAlertNode from '../nodes/EmailAlertNode';
 import LogAlertNode from '../nodes/LogAlertNode';
 import LiveChart from '../components/LiveChart';
 import LiveDashboard from '../components/LiveDashboard';
+import WebhookAlertNode from '../nodes/WebhookAlertNode';
+import GlowEdge from '../components/GlowEdge';
 
 const nodeTypes = {
   sensor: SensorNode, filter: FilterNode, alert: AlertNode,
   httpSource: HttpSourceNode, simulatorSource: SimulatorSourceNode,
   multiply: MultiplyNode, add: AddNode, movingAverage: MovingAverageNode,
   smsAlert: SmsAlertNode, emailAlert: EmailAlertNode, logAlert: LogAlertNode,
+  webhookAlert: WebhookAlertNode,
 };
+
+const edgeTypes = { glowEdge: GlowEdge };
 
 const STORAGE_KEY = 'nexusflow_graph';
 
@@ -70,6 +75,7 @@ const SIDEBAR_SECTIONS = [
       { type: 'smsAlert', label: 'SMS Alert', icon: '📱', desc: 'Send SMS' },
       { type: 'emailAlert', label: 'Email', icon: '📧', desc: 'Send email' },
       { type: 'logAlert', label: 'Log', icon: '📋', desc: 'Log event' },
+      { type: 'webhookAlert', label: 'Webhook', icon: '🔗', desc: 'HTTP webhook' },
       { type: 'alert', label: 'Alert', icon: '🔔', desc: 'Generic alert' },
     ],
   },
@@ -87,6 +93,7 @@ const NODE_DEFAULTS = {
   smsAlert: { label: 'SMS Alert', threshold: 85, actionType: 'sms' },
   emailAlert: { label: 'Email Alert', threshold: 85, actionType: 'email' },
   logAlert: { label: 'Log Alert', threshold: 85, actionType: 'log' },
+  webhookAlert: { label: 'Webhook Alert', threshold: 85, actionType: 'webhook', target: 'http://localhost:5000/api/webhook/receiver' },
 };
 
 const EDGE_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#fbbf24', '#60a5fa'];
@@ -94,7 +101,7 @@ const EDGE_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#fbbf24', '#60
 const NODE_LABEL = {
   sensor: 'Sensor', simulatorSource: 'Simulator', httpSource: 'HTTP',
   movingAverage: 'Moving Avg', multiply: 'Multiply', add: 'Add', filter: 'Filter',
-  smsAlert: 'SMS Alert', emailAlert: 'Email Alert', logAlert: 'Log Alert', alert: 'Alert',
+  smsAlert: 'SMS Alert', emailAlert: 'Email Alert', logAlert: 'Log Alert', webhookAlert: 'Webhook Alert', alert: 'Alert',
 };
 
 function buildPipeline(nodes, edges) {
@@ -204,7 +211,7 @@ export default function Canvas({ user, onLogout }) {
           return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
         if (node.type === 'add')
           return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
-        if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(node.type))
+        if (['alert', 'smsAlert', 'emailAlert', 'logAlert', 'webhookAlert'].includes(node.type))
           return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85), onDelete: () => deleteNode(node.id), onThresholdChange: (t) => updateThreshold(node.id, t) } };
         return node;
       }));
@@ -276,7 +283,7 @@ export default function Canvas({ user, onLogout }) {
   };
 
   const isLive = wsStatus === 'live';
-  const ACTION_ICON = { sms: '📱', email: '📧', log: '📋', default: '🔔' };
+  const ACTION_ICON = { sms: '📱', email: '📧', log: '📋', webhook: '🔗', default: '🔔' };
 
   return (
     <div style={s.root}>
@@ -334,7 +341,7 @@ export default function Canvas({ user, onLogout }) {
           <div style={s.pipelineSteps}>
             {pipeline.map((step, i) => {
               const isSource = ['sensor', 'simulatorSource', 'httpSource'].includes(step.type);
-              const isAction = ['smsAlert', 'emailAlert', 'logAlert', 'alert'].includes(step.type);
+              const isAction = ['smsAlert', 'emailAlert', 'logAlert', 'webhookAlert', 'alert'].includes(step.type);
               const color = isSource ? '#38bdf8' : isAction ? '#fb7185' : '#a78bfa';
               return (
                 <div key={i} style={s.pipelineStepWrap}>
@@ -388,7 +395,7 @@ export default function Canvas({ user, onLogout }) {
             <ReactFlow
               nodes={nodes} edges={edges}
               onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-              onConnect={onConnect} nodeTypes={nodeTypes}
+              onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
               fitView nodesDraggable={!locked} nodesFocusable={!locked}
               defaultEdgeOptions={{ animated: true }}
             >
