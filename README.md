@@ -60,6 +60,13 @@ The current alert implementation logs alert messages; actual SMS delivery is not
 - Developed the stream compiler and RxJS processing logic.
 - Integrated WebSocket communication.
 
+### Week 3 – Live Rule Execution and Dashboards
+
+- Connected incoming WebSocket telemetry to dynamically compiled RxJS pipelines for real-time rule evaluation in memory.
+- Implemented live rule execution to process incoming sensor readings according to the configured workflow.
+- Developed real-time dashboards using Recharts or Chart.js to visualize incoming telemetry data.
+- Integrated WebSocket streams with dashboard components to display live sensor readings and processed values.
+
 ## Running the Project
 
 ### Prerequisites
