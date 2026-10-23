@@ -41,9 +41,15 @@ function triggerAlert(node, value, wss, deviceId = 'unknown') {
   switch (actionType) {
     case 'sms':
       console.log(`[SMS ALERT] ${label}: value ${value} crossed threshold ${threshold}`);
+      wss.clients.forEach((c) => {
+        if (c.readyState === 1) c.send(JSON.stringify({ type: 'webhook_dispatch', actionType: 'sms', label, value, threshold, url: 'mock://sms', status: 200, timestamp: new Date().toISOString() }));
+      });
       break;
     case 'email':
       console.log(`[EMAIL ALERT] ${label}: value ${value} crossed threshold ${threshold}`);
+      wss.clients.forEach((c) => {
+        if (c.readyState === 1) c.send(JSON.stringify({ type: 'webhook_dispatch', actionType: 'email', label, value, threshold, url: 'mock://email', status: 200, timestamp: new Date().toISOString() }));
+      });
       break;
     case 'webhook': {
       const target = node.data.target || node.data.webhookUrl;
@@ -55,9 +61,20 @@ function triggerAlert(node, value, wss, deviceId = 'unknown') {
           const req = lib.request(
             { hostname: url.hostname, port: url.port || (url.protocol === 'https:' ? 443 : 80), path: url.pathname + url.search, method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
-            (res) => console.log(`[WEBHOOK] ${target} → ${res.statusCode}`)
+            (res) => {
+              console.log(`[WEBHOOK] ${target} → ${res.statusCode}`);
+              pipelineStatus.webhooksSent += 1;
+              wss.clients.forEach((c) => {
+                if (c.readyState === 1) c.send(JSON.stringify({ type: 'webhook_dispatch', actionType: 'webhook', label, value, threshold, url: target, status: res.statusCode, timestamp: new Date().toISOString() }));
+              });
+            }
           );
-          req.on('error', (e) => console.error(`[WEBHOOK] dispatch error: ${e.message}`));
+          req.on('error', (e) => {
+            console.error(`[WEBHOOK] dispatch error: ${e.message}`);
+            wss.clients.forEach((c) => {
+              if (c.readyState === 1) c.send(JSON.stringify({ type: 'webhook_dispatch', actionType: 'webhook', label, value, threshold, url: target, status: 0, error: e.message, timestamp: new Date().toISOString() }));
+            });
+          });
           req.write(body);
           req.end();
         } catch (e) { console.error(`[WEBHOOK] invalid URL: ${target}`); }
@@ -66,6 +83,9 @@ function triggerAlert(node, value, wss, deviceId = 'unknown') {
     }
     default:
       console.log(`[LOG ALERT] ${label}: value ${value} crossed threshold ${threshold}`);
+      wss.clients.forEach((c) => {
+        if (c.readyState === 1) c.send(JSON.stringify({ type: 'webhook_dispatch', actionType: 'log', label, value, threshold, url: 'mock://log', status: 200, timestamp: new Date().toISOString() }));
+      });
   }
 }
 

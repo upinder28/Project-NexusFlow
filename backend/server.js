@@ -7,10 +7,12 @@ const connectDB = require('./db');
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.set('wss', wss);
 
 app.use('/api/telemetry', require('./routes/telemetry'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pipeline', require('./routes/pipeline'));
+app.use('/api/webhook', require('./routes/webhook'));
 
 const { compileGraph } = require('./compiler');
 const Pipeline = require('./models/Pipeline');

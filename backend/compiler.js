@@ -3,7 +3,7 @@ const { getSensorStream } = require('./streamEngine');
 const { triggerAlert } = require('./alertEngine');
 
 const activeSubscriptions = [];
-const pipelineStatus = { active: false, deviceId: null, nodeCount: 0, edgeCount: 0, compiledAt: null, telemetryIngested: 0, alertsFired: 0, ingestRate: 0 };
+const pipelineStatus = { active: false, deviceId: null, nodeCount: 0, edgeCount: 0, compiledAt: null, telemetryIngested: 0, alertsFired: 0, ingestRate: 0, webhooksSent: 0 };
 
 let _rateCount = 0;
 setInterval(() => { pipelineStatus.ingestRate = _rateCount; _rateCount = 0; }, 1000);

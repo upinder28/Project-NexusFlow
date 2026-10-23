@@ -9,8 +9,8 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
   const [pipelineStream, setPipelineStream] = useState([]);
   const [deviceStats, setDeviceStats] = useState({});
   const [recentAlerts, setRecentAlerts] = useState([]);
-  const [webhooks, setWebhooks] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview'); // overview | pipeline | devices | alerts
+  const [webhookLog, setWebhookLog] = useState([]);
+  const [activeTab, setActiveTab] = useState('overview'); // overview | pipeline | devices | alerts | webhooks
   const [backendStats, setBackendStats] = useState(null);
   const [deviceCharts, setDeviceCharts] = useState({});
   const [deviceLastSeen, setDeviceLastSeen] = useState({});
