@@ -68,6 +68,9 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
           if (data.type === 'alert' && data.triggered) {
             setRecentAlerts((prev) => [{ id: Date.now() + Math.random(), label: data.label, value: data.value, threshold: data.threshold, actionType: data.actionType, webhookUrl: data.webhookUrl, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 20));
           }
+          if (data.type === 'webhook_dispatch') {
+            setWebhookLog((prev) => [{ id: Date.now() + Math.random(), label: data.label, value: data.value, threshold: data.threshold, actionType: data.actionType, url: data.url, status: data.status, error: data.error, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 50));
+          }
         } catch (err) { console.error('WS parse error:', err); }
       };
       ws.onclose = () => { retryTimer = setTimeout(connect, 3000); };
@@ -113,6 +116,12 @@ return (
             onClick={() => setActiveTab('alerts')}
           >
             Alert History
+          </button>
+          <button
+            style={{ ...styles.tabBtn, ...(activeTab === 'webhooks' ? styles.tabBtnActive : {}) }}
+            onClick={() => setActiveTab('webhooks')}
+          >
+            Webhooks ({webhookLog.length})
           </button>
         </div>
       </div>
@@ -408,6 +417,64 @@ return (
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── TAB 5: WEBHOOKS ── */}
+      {activeTab === 'webhooks' && (
+        <div style={styles.webhookSection}>
+          <div style={styles.webhookHeaderRow}>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>🔗 Outbound Webhook Dispatch Log</span>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>{webhookLog.length} dispatches recorded · mock://sms · mock://email · HTTP</div>
+            </div>
+            <button
+              style={styles.testBtn}
+              onClick={() => fetch('http://localhost:5000/api/webhook/test', { method: 'POST' })}
+            >
+              ⚡ Test Webhook
+            </button>
+          </div>
+          <div style={styles.webhookTableCard}>
+            <div style={styles.cardHeader}>
+              <span style={styles.cardTitle}>Dispatch History</span>
+              <span style={styles.badgeLive}>● Live</span>
+            </div>
+            {webhookLog.length === 0 ? (
+              <div style={styles.emptyPrompt}>
+                No dispatches yet. Trigger an alert or click Test Webhook.
+              </div>
+            ) : (
+              <table style={styles.whTable}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Time</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>Label</th>
+                    <th style={styles.th}>Value</th>
+                    <th style={styles.th}>URL / Target</th>
+                    <th style={styles.th}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {webhookLog.map((w) => (
+                    <tr key={w.id}>
+                      <td style={styles.td}>{w.time}</td>
+                      <td style={styles.td}><span style={styles.typeBadge}>{w.actionType?.toUpperCase()}</span></td>
+                      <td style={styles.td}>{w.label}</td>
+                      <td style={{ ...styles.td, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace' }}>{w.value}</td>
+                      <td style={{ ...styles.td, color: '#64748b', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>{w.url}</td>
+                      <td style={styles.td}>
+                        {w.error
+                          ? <span style={{ color: '#f85149', fontWeight: 600 }}>✗ Error</span>
+                          : <span style={styles.statusSuccess}>✓ {w.status}</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
