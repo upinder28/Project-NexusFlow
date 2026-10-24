@@ -167,7 +167,6 @@ export default function Canvas({ user, onLogout }) {
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
 
-      // Alert log entries
       if (data.type === 'alert' && data.triggered) {
         const entry = {
           id: Date.now(),
@@ -181,6 +180,16 @@ export default function Canvas({ user, onLogout }) {
         return;
       }
       if (data.type === 'compiled') return;
+
+      if (data.type === 'node_execution') {
+        const { sourceNodeId, targetNodeId } = data;
+        setEdges((eds) => eds.map((e) =>
+          e.source === sourceNodeId && e.target === targetNodeId
+            ? { ...e, type: 'glowEdge', data: { ...e.data, activeAt: Date.now() } }
+            : e
+        ));
+        return;
+      }
 
       const { metadata, value } = data;
       const deviceId = metadata?.deviceId;
