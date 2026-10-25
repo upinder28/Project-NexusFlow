@@ -9,7 +9,7 @@ export default function LogAlertNode({ data }) {
   const commit = () => { data.onThresholdChange?.(Number(val)); setEditing(false); };
 
   return (
-    <div style={{ ...s.node, borderColor: triggered ? '#fbbf24' : '#3a2a0a' }}>
+    <div style={{ ...s.node, borderColor: triggered ? '#fbbf24' : '#3a2a0a', boxShadow: triggered ? '0 0 18px #fbbf2455' : '0 4px 24px #fbbf2410' }}>
       <div style={s.top}>
         <div style={{ ...s.iconWrap, background: triggered ? '#fbbf2420' : '#fbbf2410' }}>📋</div>
         <div>
@@ -44,7 +44,7 @@ export default function LogAlertNode({ data }) {
 }
 
 const s = {
-  node: { background: '#120f05', border: '1px solid', borderRadius: 12, padding: '12px 14px', minWidth: 170, fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 24px #fbbf2410', transition: 'border-color 0.3s' },
+  node: { background: '#120f05', border: '1px solid', borderRadius: 12, padding: '12px 14px', minWidth: 170, fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 24px #fbbf2410', transition: 'border-color 0.3s, box-shadow 0.3s' },
   top: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 },
   iconWrap: { fontSize: 16, width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.3s' },
   type: { fontSize: 9, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '1px' },

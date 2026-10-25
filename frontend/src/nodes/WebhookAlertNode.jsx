@@ -16,7 +16,7 @@ export default function WebhookAlertNode({ data }) {
   };
 
   return (
-    <div style={{ ...s.node, borderColor: triggered ? '#fb7185' : '#1e3a5f' }}>
+    <div style={{ ...s.node, borderColor: triggered ? '#fb7185' : '#1e3a5f', boxShadow: triggered ? '0 0 18px #fb718555' : '0 4px 24px rgba(56, 189, 248, 0.1)' }}>
       <div style={s.top}>
         <div style={{ ...s.iconWrap, background: triggered ? '#fb718520' : '#38bdf815' }}>
           {triggered ? '⚡' : '🔗'}
