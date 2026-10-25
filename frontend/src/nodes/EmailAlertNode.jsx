@@ -9,7 +9,7 @@ export default function EmailAlertNode({ data }) {
   const commit = () => { data.onThresholdChange?.(Number(val)); setEditing(false); };
 
   return (
-    <div style={{ ...s.node, borderColor: triggered ? '#60a5fa' : '#1a2a4a' }}>
+    <div style={{ ...s.node, borderColor: triggered ? '#60a5fa' : '#1a2a4a', boxShadow: triggered ? '0 0 18px #60a5fa55' : '0 4px 24px #60a5fa10' }}>
       <div style={s.top}>
         <div style={{ ...s.iconWrap, background: triggered ? '#60a5fa20' : '#60a5fa10' }}>📧</div>
         <div>
@@ -44,7 +44,7 @@ export default function EmailAlertNode({ data }) {
 }
 
 const s = {
-  node: { background: '#0a0f1f', border: '1px solid', borderRadius: 12, padding: '12px 14px', minWidth: 170, fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 24px #60a5fa10', transition: 'border-color 0.3s' },
+  node: { background: '#0a0f1f', border: '1px solid', borderRadius: 12, padding: '12px 14px', minWidth: 170, fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 24px #60a5fa10', transition: 'border-color 0.3s, box-shadow 0.3s' },
   top: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 },
   iconWrap: { fontSize: 16, width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.3s' },
   type: { fontSize: 9, fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '1px' },

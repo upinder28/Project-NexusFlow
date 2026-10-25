@@ -88,7 +88,7 @@ return (
             <span style={{ marginRight: 8 }}>📊</span> Live Telemetry & Execution Dashboard
           </h2>
           <p style={styles.subtitle}>
-            Week 3 Real-time Recharts visualization + Week 4 Webhook Dispatch Monitor
+            Week 3 · Real-time Recharts · Week 4 · Webhook Dispatch · Glow Edges
           </p>
         </div>
 
