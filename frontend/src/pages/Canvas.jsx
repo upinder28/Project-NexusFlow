@@ -19,6 +19,8 @@ import LiveChart from '../components/LiveChart';
 import LiveDashboard from '../components/LiveDashboard';
 import WebhookAlertNode from '../nodes/WebhookAlertNode';
 import GlowEdge from '../components/GlowEdge';
+import InspectorPanel from '../components/InspectorPanel';
+import { runSerializationProof, validateGraph, serializeGraph } from '../lib/graphSerializer';
 
 const nodeTypes = {
   sensor: SensorNode, filter: FilterNode, alert: AlertNode,
@@ -137,6 +139,8 @@ export default function Canvas({ user, onLogout }) {
   const [showTable, setShowTable] = useState(false);
   const [activeSubs, setActiveSubs] = useState(0);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [showInspector, setShowInspector] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState('json');
   const valuesRef = useRef({});
   const historyRef = useRef({});
   const rateRef = useRef(0);
@@ -221,7 +225,7 @@ export default function Canvas({ user, onLogout }) {
         if (node.type === 'add')
           return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
         if (['alert', 'smsAlert', 'emailAlert', 'logAlert', 'webhookAlert'].includes(node.type))
-          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85), onDelete: () => deleteNode(node.id), onThresholdChange: (t) => updateThreshold(node.id, t) } };
+          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85), onDelete: () => deleteNode(node.id), onThresholdChange: (t) => updateThreshold(node.id, t), onDataChange: (patch) => updateNodeData(node.id, patch) } };
         return node;
       }));
     };
@@ -255,6 +259,10 @@ export default function Canvas({ user, onLogout }) {
 
   const updateThreshold = useCallback((id, threshold) => {
     setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, threshold } } : n));
+  }, []);
+
+  const updateNodeData = useCallback((id, patch) => {
+    setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));
   }, []);
 
   const handleCompile = async () => {
@@ -322,6 +330,7 @@ export default function Canvas({ user, onLogout }) {
         <div style={s.navRight}>
           <button style={s.btnGhost} onClick={() => setLocked(l => !l)}>{locked ? '🔒' : '🔓'} {locked ? 'Locked' : 'Unlocked'}</button>
           <button style={s.btnGhost} onClick={() => setShowDashboard(d => !d)}>📊 {showDashboard ? 'Hide Dashboard' : 'Dashboard'}</button>
+          <button style={s.btnGhost} onClick={() => setShowInspector(i => !i)}>🔍 {showInspector ? 'Hide Inspector' : 'Inspector'}</button>
           <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
           <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
           {user && <span style={s.userChip}>👤 {user.name}</span>}
@@ -501,6 +510,71 @@ export default function Canvas({ user, onLogout }) {
           </div>
         </aside>
       </div>
+
+      {/* ── INSPECTOR PANEL ── */}
+      {showInspector && (
+        <div style={s.inspectorBar}>
+          <div style={s.inspectorTabs}>
+            {[['json', '{ } JSON'], ['issues', '⚠ Issues'], ['alerts', '🔔 Alerts']].map(([id, label]) => (
+              <button
+                key={id}
+                style={{ ...s.inspTabBtn, ...(inspectorTab === id ? s.inspTabActive : {}) }}
+                onClick={() => setInspectorTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+            <button style={s.inspClose} onClick={() => setShowInspector(false)}>✕</button>
+          </div>
+          <div style={s.inspectorBody}>
+            {inspectorTab === 'json' && (() => {
+              const proof = runSerializationProof(nodes, edges, { name: 'NexusFlow Pipeline' });
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {proof.checks.map((c) => (
+                      <span key={c.name} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: c.pass ? '#34d39915' : '#f8514915', color: c.pass ? '#34d399' : '#f85149', border: `1px solid ${c.pass ? '#34d39930' : '#f8514930'}` }}>
+                        {c.pass ? '✔' : '✖'} {c.name}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button style={s.inspBtn} onClick={() => navigator.clipboard.writeText(proof.text)}>Copy JSON</button>
+                    <button style={s.inspBtn} onClick={handleExport}>Download</button>
+                  </div>
+                  <pre style={s.inspPre}>{JSON.stringify(proof.graph, null, 2)}</pre>
+                </div>
+              );
+            })()}
+            {inspectorTab === 'issues' && (() => {
+              const v = validateGraph(serializeGraph(nodes, edges));
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {v.errors.length === 0 && v.warnings.length === 0 && (
+                    <span style={{ color: '#34d399', fontSize: 12 }}>✔ Graph is valid — no issues found.</span>
+                  )}
+                  {v.errors.map((e, i) => (
+                    <div key={i} style={{ fontSize: 11, color: '#f85149', background: '#f8514910', border: '1px solid #f8514930', borderRadius: 6, padding: '6px 10px' }}>✖ {e.message}</div>
+                  ))}
+                  {v.warnings.map((w, i) => (
+                    <div key={i} style={{ fontSize: 11, color: '#fbbf24', background: '#fbbf2410', border: '1px solid #fbbf2430', borderRadius: 6, padding: '6px 10px' }}>⚠ {w.message}</div>
+                  ))}
+                </div>
+              );
+            })()}
+            {inspectorTab === 'alerts' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {alertLog.length === 0 && <span style={{ color: '#475569', fontSize: 12 }}>No alerts fired yet.</span>}
+                {alertLog.map((a) => (
+                  <div key={a.id} style={{ fontSize: 11, color: '#fb7185', background: '#fb718510', border: '1px solid #fb718530', borderRadius: 6, padding: '6px 10px' }}>
+                    <b>{a.label}</b> · {a.value}°C &gt; {a.threshold} · {a.actionType?.toUpperCase()} · {a.time}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -576,4 +650,13 @@ const s = {
   logEntryBot: { display: 'flex', alignItems: 'baseline', gap: 6 },
   logValue: { fontSize: 14, fontWeight: 700, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace' },
   logThresh: { fontSize: 9, color: '#475569' },
+
+  inspectorBar: { background: '#0a0d16', borderTop: '1px solid #1e293b', flexShrink: 0, maxHeight: 320, display: 'flex', flexDirection: 'column' },
+  inspectorTabs: { display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderBottom: '1px solid #1e293b' },
+  inspTabBtn: { background: 'transparent', border: 'none', color: '#64748b', padding: '4px 12px', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  inspTabActive: { background: '#1e293b', color: '#38bdf8' },
+  inspClose: { marginLeft: 'auto', background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13, padding: '2px 6px' },
+  inspectorBody: { flex: 1, overflowY: 'auto', padding: '10px 14px' },
+  inspPre: { fontSize: 10, color: '#64748b', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#060910', border: '1px solid #1e293b', borderRadius: 6, padding: 10, maxHeight: 180, overflowY: 'auto' },
+  inspBtn: { background: '#1e293b', border: '1px solid #334155', color: '#94a3b8', borderRadius: 5, padding: '4px 10px', fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif' },
 };
