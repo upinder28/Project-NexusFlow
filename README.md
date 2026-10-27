@@ -8,7 +8,7 @@ Instead of writing `if (temperature > 80°C) { sendSMS(); }`, factory operators 
 
 ---
 
-## ✅ Completion Status: Week 1 + Week 2 + Mid-Project Review
+## ✅ Completion Status: Week 1 → Week 4 (Mid-Project Review included)
 
 ---
 
@@ -30,6 +30,7 @@ A factory floor manager logs into NexusFlow. Using a React-based visual drag-and
 | Backend    | Node.js, Express 5, RxJS 7          |
 | Database   | MongoDB 5.0+ Time-Series            |
 | Realtime   | WebSockets (ws library)             |
+| Delivery   | HTTP webhooks (HMAC-signed), mock SMS / email |
 | Language   | JavaScript (ES2022)                 |
 
 ---
@@ -39,10 +40,12 @@ A factory floor manager logs into NexusFlow. Using a React-based visual drag-and
 ### 1. Visual Graph Builder (React + React Flow)
 A node-based UI allowing non-technical users to build complex logic trees and data pipelines.
 
-**13 Custom Node Types:**
-- **Sources**: `SensorNode`, `SimulatorSourceNode`, `HttpSourceNode`, `DataSourceNode`
-- **Operations**: `MovingAverageNode`, `MathOperationNode`, `MultiplyNode`, `AddNode`, `FilterNode`
-- **Actions**: `SmsAlertNode`, `EmailAlertNode`, `LogAlertNode`, `AlertNode`
+**Node Library (editable parameters live on the node):**
+- **Data Sources**: `SensorNode`, `SimulatorSourceNode`, `HttpSourceNode`
+- **Math Operations**: `MovingAverageNode`, `MultiplyNode`, `AddNode`, `FilterNode`
+- **Action Triggers**: `SmsAlertNode`, `EmailAlertNode`, `LogAlertNode`, `WebhookAlertNode`, `AlertNode` (generic)
+
+Wires **glow and send a travelling dot** when data passes (`GlowEdge`). Live values are merged in at render time, so they never end up in the saved graph JSON.
 
 ### 2. Time-Series Database (MongoDB 5.0+)
 Utilizes native MongoDB Time-Series collections optimized for append-only sensor data.
@@ -58,8 +61,19 @@ Backend engine that translates the JSON graph from the frontend into highly conc
 POST /api/compile  →  Graph JSON  →  RxJS Pipeline  →  WebSocket broadcast
 ```
 
-### 4. Ingestion API (Express + WebSockets)
-High-throughput endpoints to receive mock hardware telemetry and broadcast alerts back to the client.
+### 4. Ingestion (Express + WebSockets)
+- `POST /api/telemetry` and `POST /api/telemetry/batch` (up to 5000 readings) → in-memory buffer → one `insertMany({ ordered:false })` per batch. Returns `202` (accepted), `503` + `Retry-After` when the buffer is full.
+- `ws://host:5000/ws/ingest` — devices stream readings over a WebSocket (single, array or `{readings:[]}` frames).
+- Readings go straight to the rule engine from memory, never waiting for the DB.
+
+### 5. Live Rule Execution & Dashboards (Week 3)
+Deploy compiles the graph into RxJS in memory; telemetry flows through it live. Per-node values, alerts, deliveries and ingestion stats are pushed over the WebSocket (batched every 100 ms in the browser) into the canvas and a Recharts dashboard.
+
+### 6. Webhooks & Alerting (Week 4)
+Fired alerts are queued and delivered asynchronously (the rule engine never waits on a slow endpoint):
+- **webhook** — real HTTP POST (JSON), 5 s timeout, 3 attempts with exponential backoff, optional `X-NexusFlow-Signature: sha256=<hmac>` when `WEBHOOK_SECRET` is set, SSRF guard (private / loopback / link-local targets refused unless `WEBHOOK_ALLOW_PRIVATE=true`; the checked IP is the one connected to).
+- **sms / email** — **mock providers** (logged + shown in the Deliveries tab). Set `SMS_WEBHOOK_URL` to POST SMS to any HTTP gateway.
+- Built-in demo receivers: `POST /api/mock/webhook` (always 200) and `/api/mock/flaky` (fails 2 of 3 calls, to show retries).
 
 ---
 
@@ -67,14 +81,25 @@ High-throughput endpoints to receive mock hardware telemetry and broadcast alert
 
 | Method | Endpoint | Description | Week |
 |--------|----------|-------------|------|
-| POST | `/api/telemetry` | Ingest sensor telemetry, push to RxJS stream & MongoDB | 1 |
-| GET  | `/api/telemetry/:deviceId` | Retrieve stored telemetry with optional time-range filter | 1 |
-| POST | `/api/compile` | Compile React Flow graph JSON into RxJS observable pipeline | 2 |
-| POST | `/api/graph/save` | Persist current graph JSON to disk | 2 |
-| GET  | `/api/graph/load` | Reload previously saved graph JSON | 2 |
-| POST | `/api/graph/validate` | Validate graph structure (source, connectivity, actions) | 2 |
-| GET  | `/api/stats` | Runtime stats: ingest rate, alerts, compile runs, uptime | 2 |
-| GET  | `/api/health` | Server health check | 2 |
+| POST | `/api/telemetry` | Ingest one reading (202, buffered batch write) | 1 |
+| POST | `/api/telemetry/batch` | Ingest up to 5000 readings | 2 |
+| GET  | `/api/telemetry/:deviceId` | Latest 50 stored readings of a device | 1 |
+| GET  | `/api/telemetry/stats` | Ingest counters + MongoDB storage numbers (collStats) | 2 |
+| POST | `/api/compile` | Validate + compile + deploy graph (422 with error list if invalid) | 2 |
+| POST | `/api/compile/validate` | Dry-run validation | 2 |
+| POST | `/api/compile/stop` | Stop the running pipeline | 3 |
+| GET  | `/api/compile/status` | Running pipeline + per-node message counts | 3 |
+| GET  | `/api/compile/alerts` | Recent fired alerts | 2 |
+| GET / PUT | `/api/graph` | Load / save the canvas graph (file on the server) | 2 |
+| GET  | `/api/notifications` | Delivery log + queue stats + config | 4 |
+| POST | `/api/notifications/test` | Send a test delivery `{channel, target}` | 4 |
+| POST/GET/DELETE | `/api/mock/*` | Demo webhook receivers | 4 |
+| GET  | `/api/stats` | Compile runs, alerts, WS counters, ingest + delivery stats | 2 |
+| GET  | `/api/health` | Health check | 2 |
+| WS   | `/ws/ingest` | Device telemetry over WebSocket | 3 |
+| WS   | `/` | Canvas feed: `node`, `alert`, `delivery`, `telemetry`, `stats`, `pipeline` events | 3 |
+
+The pipeline that is running is saved to `backend/data/active-pipeline.json` and re-deployed on server start.
 
 ---
 
@@ -103,38 +128,37 @@ High-throughput endpoints to receive mock hardware telemetry and broadcast alert
 ### Week 2 — Core Engine
 
 **Backend (Logic Compiler)**
-- [x] `POST /api/compile` — accepts React Flow JSON graph
-- [x] `compiler.js` — graph walk: source → operations → actions
-- [x] RxJS operators: `bufferCount` (moving average), `map` (math), `filter` (threshold)
-- [x] Support for all node types: `movingAverage`, `multiply`, `add`, `filter`, `mathOperation`
-- [x] Duplicate pipeline prevention via subscription registry
-- [x] Alert engine (`alertEngine.js`) — SMS/email/log dispatch + WebSocket broadcast
-- [x] `POST /api/graph/save` + `GET /api/graph/load` + `POST /api/graph/validate`
-- [x] `GET /api/stats` — runtime stats tracker
-- [x] `statsTracker.js` — ingest rate, alert count, compile runs, uptime
+- [x] `POST /api/compile` — accepts React Flow JSON graph; invalid graphs get `422` + error list
+- [x] `graphValidator.js` — sources/actions/connectivity/cycles/params, topological order
+- [x] `compiler.js` — graph → RxJS: fan-in = `merge`, fan-out = `share`, redeploy disposes the old pipeline
+- [x] Operators: moving average (window), add / multiply, threshold filter (`operators.js`)
+- [x] Alert engine: fires on rising edge, then again after the cooldown (default 30 s)
+- [x] `GET/PUT /api/graph` (save / load), `POST /api/compile/validate`
+- [x] `statsTracker.js` + `GET /api/stats`, `GET /api/health`
+- [x] Buffered batch ingestion + `/api/telemetry/batch` for the 5,000 writes/s target
 
 **Frontend (Node Library)**
-- [x] `DataSourceNode` — type selector (Sensor/HTTP/Simulator/MQTT) + deviceId config
-- [x] `MathOperationNode` — 7 operations (Moving Average, Add, Subtract, Multiply, Divide, Max, Min)
-- [x] Both registered in Canvas `nodeTypes` map
-- [x] Added to sidebar under Sources / Operations sections
-- [x] Graph save/load via backend buttons in nav bar
-- [x] JSON file import from local disk
-- [x] Graph validate with banner feedback
-- [x] Mid-Project Review dashboard (`/src/pages/MidReview.jsx`)
+- [x] Data Sources / Math Operations / Action Triggers in the sidebar, parameters editable on the node
+- [x] Versioned graph JSON (`graphSerializer.js`), import / export, sample graphs, legacy Week-1 canvas migration
+- [x] Validate button + error banner with the failing nodes outlined
+
+### Week 3 — Live Execution & Dashboards
+- [x] WebSocket telemetry ingestion (`wsIngest.js`, `/ws/ingest`)
+- [x] Dynamically compiled rules run in memory against live data; redeploy disposes the old pipeline
+- [x] Pipeline persisted and restored on restart (`graphStore.js`)
+- [x] `liveStore.js` + `useLiveStream` (batched WS → React) and `LiveDashboard` (Recharts: node values, ingestion throughput, KPIs)
+
+### Week 4 — Webhooks, Alerting & Polish
+- [x] `notifier.js`: queued delivery, retry/backoff, HMAC signature, SSRF guard, mock SMS/email
+- [x] `WebhookAlertNode`, Deliveries tab with live status (queued → sending → retrying → sent / failed / blocked)
+- [x] Glowing wires, validation banner with failing nodes outlined, Validate / Stop, toasts, JSON import / export / samples
 
 ---
 
-## Mid-Project Review Dashboard
+## Mid-Project Review
 
-Navigate to the **Mid-Review** page from the canvas (purple button in nav) to see:
-- Live backend stats (ingest rate, alerts fired, active devices, uptime)
-- Live telemetry area chart (device-1 stream)
-- Development timeline (Week 1 → Week 2 → Mid-Review)
-- System architecture diagram (Simulator → API → MongoDB → RxJS → WebSocket → React)
-- All 6 modules with expandable feature lists
-- Complete API endpoint table
-- Demo pipeline: Turbine Sensor → Moving Average → SMS Alert
+- **Graph serialization proof**: nav button **Graph JSON** — versioned JSON, whitelisted node data, validation, round-trip check (`frontend/src/lib/graphSerializer.js`, tested).
+- **Ingestion audit**: `npm run benchmark` (drives a real server at 5,000 writes/s and writes a report to `backend/audit/`) and `npm run storage-compare` (Time-Series vs regular collection bytes per reading). **These need a running MongoDB; no result is recorded in this repo — run them and attach the generated report.**
 
 ---
 
@@ -143,45 +167,31 @@ Navigate to the **Mid-Review** page from the canvas (purple button in nav) to se
 ```
 NexusFlow/
 ├── backend/
-│   ├── server.js            # Express + WebSocket server
-│   ├── compiler.js          # Logic compiler (graph → RxJS pipeline)
-│   ├── streamEngine.js      # RxJS Subject registry per deviceId
-│   ├── alertEngine.js       # Alert trigger & WebSocket broadcast
-│   ├── statsTracker.js      # Runtime stats (Week 2)
-│   ├── simulator.js         # Mock IoT telemetry generator
-│   ├── stressTest.js        # 5000-write/sec ingestion audit
-│   ├── db.js                # MongoDB Time-Series connection
-│   ├── wss.js               # WebSocket server instance
-│   ├── models/
-│   │   └── Telemetry.js     # MongoDB schema (timeField/metaField)
-│   ├── controllers/
-│   │   └── telemetryController.js
-│   └── routes/
-│       ├── telemetry.js     # Week 1: ingest + query
-│       └── graph.js         # Week 2: save / load / validate
-└── frontend/
-    └── src/
-        ├── App.jsx           # Hash-based routing (Canvas ↔ MidReview)
-        ├── pages/
-        │   ├── Canvas.jsx    # Main drag-and-drop canvas
-        │   └── MidReview.jsx # Mid-project review dashboard
-        ├── nodes/            # 13 custom React Flow node components
-        │   ├── SensorNode.jsx
-        │   ├── DataSourceNode.jsx
-        │   ├── SimulatorSourceNode.jsx
-        │   ├── HttpSourceNode.jsx
-        │   ├── MovingAverageNode.jsx
-        │   ├── MathOperationNode.jsx
-        │   ├── MultiplyNode.jsx
-        │   ├── AddNode.jsx
-        │   ├── FilterNode.jsx
-        │   ├── SmsAlertNode.jsx
-        │   ├── EmailAlertNode.jsx
-        │   ├── LogAlertNode.jsx
-        │   └── AlertNode.jsx
-        └── components/
-            └── InspectorPanel.jsx
+│   ├── server.js            # Express + WS wiring, restore of the active pipeline, graceful shutdown
+│   ├── graphValidator.js    # graph → validated, normalised nodes + execution order
+│   ├── compiler.js          # logic compiler (graph → RxJS), deploy / stop / status
+│   ├── operators.js         # moving average / math / filter operators
+│   ├── alertEngine.js       # rising-edge + cooldown evaluation, hands records to notifier
+│   ├── notifier.js          # webhook / sms / email delivery (Week 4)
+│   ├── ingestService.js     # buffered batch writes + back-pressure
+│   ├── wsIngest.js          # /ws/ingest
+│   ├── graphStore.js        # atomic JSON persistence (data/)
+│   ├── statsTracker.js      # runtime counters (/api/stats)
+│   ├── streamEngine.js, wss.js, db.js, simulator.js, stressTest.js
+│   ├── models/Telemetry.js, controllers/telemetryController.js
+│   ├── routes/              # telemetry, pipeline (/api/compile), graph, notifications, mock
+│   ├── scripts/             # benchmark.js, storageCompare.js
+│   ├── samples/             # simple + complex graph JSON
+│   └── test/                # node --test (npm test)
+└── frontend/src/
+    ├── pages/Canvas.jsx
+    ├── nodes/               # custom React Flow nodes (+ WebhookAlertNode)
+    ├── components/          # GlowEdge, LiveDashboard, ParamInput
+    ├── hooks/useLiveStream.js
+    └── lib/                 # nodeRegistry, graphSerializer, liveStore, sampleGraphs (+ tests)
 ```
+
+`DataSourceNode.jsx`, `MathOperationNode.jsx` and `components/InspectorPanel.jsx` are not registered on the canvas (the specific nodes replace them).
 
 ---
 
@@ -208,25 +218,39 @@ npm run simulate   # Sends 1 telemetry point/sec to POST /api/telemetry
 ```bash
 cd frontend
 npm install
-npm start          # Vite dev server on :5173
+npm start          # Vite dev server on :3000
 ```
 
-### 4. (Optional) Run Ingestion Stress Test
+### 4. Tests
+```bash
+cd backend  && npm test    # 52 tests: compiler, validator, ingest, notifier, WS ingest, e2e webhook
+cd frontend && npm test    # serializer + live store
+```
+
+### 5. Ingestion audit (needs MongoDB)
 ```bash
 cd backend
-npm run benchmark  # Fires 5000 concurrent writes, reports writes/sec
+npm run benchmark                 # 5,000 writes/s for 20 s → backend/audit/ingestion-audit-*.json
+npm run storage-compare           # Time-Series vs regular collection storage
 ```
+
+### Configuration (`backend/.env.example`)
+`PORT`, `MONGO_URI`, `RETENTION_DAYS`, `INGEST_*`, `DATA_DIR`, `WEBHOOK_SECRET`, `WEBHOOK_ALLOW_PRIVATE`, `SMS_WEBHOOK_URL`. Frontend: `VITE_API_URL` (default `http://localhost:5000`).
+
+### Production notes
+- Ingestion endpoints have **no authentication** — put them behind a gateway / API key before exposing them.
+- Webhook targets are user input: keep `WEBHOOK_ALLOW_PRIVATE` off unless you need internal targets.
+- Single process; the delivery queue and alert history are in memory (a restart loses undelivered items).
 
 ---
 
 ## Demo Flow
 
-1. Open `http://localhost:5173`
-2. The default pipeline is already set: **Turbine Sensor → Moving Average → SMS Alert**
-3. Click **▶ Compile** — the backend builds the RxJS pipeline
-4. Run the simulator: `npm run simulate` in `/backend`
-5. Watch the sensor node show live temperature values with a sparkline
-6. When the moving average crosses 85°C, the SMS Alert node turns red and the Alert Log fires
-7. Click **📊 Mid-Review** to open the project dashboard
+1. Open `http://localhost:3000`
+2. Pick **Samples… → Complex** (or keep the default Turbine Sensor → Moving Average → SMS Alert)
+3. Click **▶ Compile** — the backend validates and deploys the RxJS pipeline (errors outline the failing nodes)
+4. Run `npm run simulate` (feeds `device-1`); simulator nodes need no feed
+5. Watch values, glowing wires and the **Live Dashboard**; alerts appear in **Alerts**, webhook / SMS / email attempts in **Deliveries**
+6. Webhook node default URL is the built-in receiver; check `GET /api/mock/received`
 
 ---
