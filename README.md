@@ -11,7 +11,7 @@ The project uses React Flow to build workflows, Node.js and RxJS to process the 
 - **Visual Workflow Builder:** Create and connect nodes through an interactive canvas.
 - **Custom Node Library:** Includes sensor sources, HTTP sources, simulators, mathematical operations, filters, and alert nodes.
 - **Graph Serialization:** Convert workflows into JSON containing nodes and connections.
-- **Stream Compiler:** Parse the workflow graph and prepare the corresponding processing logic.
+- **Stream Compiler:** Parses the serialized workflow graph and builds RxJS processing pipelines based on the configured nodes and connections.
 - **Telemetry Ingestion:** Receive sensor readings through Express APIs.
 - **Time-Series Storage:** Store telemetry data with timestamps and sensor information.
 - **WebSocket Communication:** Support real-time communication between the backend and frontend.
@@ -66,6 +66,21 @@ The current alert implementation logs alert messages; actual SMS delivery is not
 - Implemented live rule execution to process incoming sensor readings according to the configured workflow.
 - Developed real-time dashboards using Recharts or Chart.js to visualize incoming telemetry data.
 - Integrated WebSocket streams with dashboard components to display live sensor readings and processed values.
+
+ ### Week 4 – Webhooks, Alerting, and Final Improvements
+
+- Improved the alert engine to trigger alerts when configured rules and threshold conditions are satisfied.
+- Added support for alert actions through the backend, with alert messages generated when anomalies are detected.
+- Refined the workflow builder to improve the visualization and usability of connected nodes.
+- Improved the interaction between the frontend workflow canvas and backend stream-processing engine.
+- Tested the complete workflow, from telemetry ingestion and data processing to rule evaluation and alert generation.
+- Completed final testing and improvements to make the application more reliable and easier to use.
+
+## Final Project Review
+
+NexusFlow combines a visual workflow builder with a backend stream-processing engine to simplify IoT telemetry processing. Users can create workflows by connecting different nodes, while the backend processes incoming telemetry according to the configured logic.
+The project integrates React Flow, Node.js, Express, RxJS, MongoDB, and WebSockets to support workflow configuration, telemetry ingestion, data processing, and alert generation. It demonstrates how visual programming can make IoT data pipelines easier to configure without hardcoding every business rule.
+The final implementation focuses on dynamic workflow processing, real-time telemetry handling, and a modular architecture that can be extended with additional data sources, processing nodes, and alert actions.
 
 ## Running the Project
 
