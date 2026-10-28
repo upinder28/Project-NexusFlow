@@ -141,6 +141,9 @@ export default function Canvas({ user, onLogout }) {
   const [showDashboard, setShowDashboard] = useState(false);
   const [showInspector, setShowInspector] = useState(false);
   const [inspectorTab, setInspectorTab] = useState('json');
+  const [savedPipelines, setSavedPipelines] = useState([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveName, setSaveName] = useState('');
   const valuesRef = useRef({});
   const historyRef = useRef({});
   const rateRef = useRef(0);
@@ -299,6 +302,42 @@ export default function Canvas({ user, onLogout }) {
     setNodes(defaultNodes); setEdges(defaultEdges); setCompileStatus('idle'); setAlertLog([]); setTelemetryRows([]);
   };
 
+  const fetchSavedPipelines = async () => {
+    const token = localStorage.getItem('nf_token');
+    try {
+      const res = await fetch('http://localhost:5000/api/pipeline/saved', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setSavedPipelines(await res.json());
+    } catch (e) {}
+  };
+
+  const handleSaveNamed = async () => {
+    const token = localStorage.getItem('nf_token');
+    await fetch('http://localhost:5000/api/pipeline/saved', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name: saveName || 'Untitled Pipeline', nodes, edges }),
+    });
+    setSaveName('');
+    setShowSaveModal(false);
+    fetchSavedPipelines();
+  };
+
+  const handleLoadPipeline = async (id) => {
+    const token = localStorage.getItem('nf_token');
+    const res = await fetch(`http://localhost:5000/api/pipeline/saved/${id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (res.ok) {
+      const p = await res.json();
+      setNodes(p.nodes); setEdges(p.edges); setCompileStatus('idle');
+      setShowSaveModal(false);
+    }
+  };
+
+  const handleDeletePipeline = async (id) => {
+    const token = localStorage.getItem('nf_token');
+    await fetch(`http://localhost:5000/api/pipeline/saved/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    fetchSavedPipelines();
+  };
+
   const isLive = wsStatus === 'live';
   const ACTION_ICON = { sms: '📱', email: '📧', log: '📋', webhook: '🔗', default: '🔔' };
 
@@ -325,6 +364,13 @@ export default function Canvas({ user, onLogout }) {
           <div style={s.statChip}><span style={s.statVal}>{totalPoints.toLocaleString()}</span><span style={s.statLbl}>total</span></div>
           <div style={s.statChip}><span style={s.statVal}>{nodes.length}</span><span style={s.statLbl}>nodes</span></div>
           {activeSubs > 0 && <div style={s.statChip}><span style={{ ...s.statVal, color: '#34d399' }}>{activeSubs}</span><span style={s.statLbl}>streams</span></div>}
+          {/* Pipeline status badge */}
+          <div style={{ ...s.statusBadge, borderColor: compileStatus === 'running' ? '#34d39944' : compileStatus === 'failed' ? '#f8514944' : '#ffffff10', background: compileStatus === 'running' ? '#34d39910' : compileStatus === 'failed' ? '#f8514910' : '#ffffff06' }}>
+            <span style={{ ...s.statusDot, background: compileStatus === 'running' ? '#34d399' : compileStatus === 'failed' ? '#f85149' : '#64748b', boxShadow: compileStatus === 'running' ? '0 0 6px #34d399' : 'none' }} />
+            <span style={{ color: compileStatus === 'running' ? '#34d399' : compileStatus === 'failed' ? '#f85149' : '#64748b', fontSize: 11, fontWeight: 600 }}>
+              {compileStatus === 'running' ? 'Pipeline Running' : compileStatus === 'failed' ? 'Compile Failed' : compileStatus === 'compiling' ? 'Compiling…' : 'Pipeline Idle'}
+            </span>
+          </div>
         </div>
 
         <div style={s.navRight}>
@@ -332,6 +378,7 @@ export default function Canvas({ user, onLogout }) {
           <button style={s.btnGhost} onClick={() => setShowDashboard(d => !d)}>📊 {showDashboard ? 'Hide Dashboard' : 'Dashboard'}</button>
           <button style={s.btnGhost} onClick={() => setShowInspector(i => !i)}>🔍 {showInspector ? 'Hide Inspector' : 'Inspector'}</button>
           <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
+          <button style={s.btnGhost} onClick={() => { setShowSaveModal(m => !m); fetchSavedPipelines(); }}>📂 Pipelines</button>
           <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
           {user && <span style={s.userChip}>👤 {user.name}</span>}
           {onLogout && <button style={s.btnLogout} onClick={onLogout}>Sign Out</button>}
