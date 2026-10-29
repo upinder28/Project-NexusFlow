@@ -3,6 +3,12 @@ const { getSensorStream } = require('./streamEngine');
 const { triggerAlert } = require('./alertEngine');
 
 const activeSubscriptions = [];
+const pipelineStatus = { active: false, deviceId: null, nodeCount: 0, edgeCount: 0, compiledAt: null, telemetryIngested: 0, alertsFired: 0, ingestRate: 0, webhooksSent: 0 };
+
+let _rateCount = 0;
+setInterval(() => { pipelineStatus.ingestRate = _rateCount; _rateCount = 0; }, 1000);
+
+function trackIngest() { _rateCount += 1; }
 
 function validateGraph(nodes, edges) {
   const nodeIds = new Set(nodes.map((n) => n.id));
@@ -53,8 +59,8 @@ function buildAdjacency(edges) {
   return adj;
 }
 
-function buildStreamChain(nodeId, adj, nodes, baseStream, wss, visited = new Set()) {
-  if (visited.has(nodeId)) return; // cycle guard
+function buildStreamChain(nodeId, adj, nodes, baseStream, wss, deviceId, visited = new Set()) {
+  if (visited.has(nodeId)) return;
   visited.add(nodeId);
 
   const targets = adj[nodeId] || [];
@@ -68,26 +74,28 @@ function buildStreamChain(nodeId, adj, nodes, baseStream, wss, visited = new Set
       branchStream = applyMathOperation(branchStream, targetNode);
     }
 
-    if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(targetNode.type)) {
+    if (['alert', 'smsAlert', 'emailAlert', 'logAlert', 'webhookAlert'].includes(targetNode.type)) {
       const alertNode = targetNode;
       branchStream = branchStream.pipe(
         map((value) => {
-          triggerAlert(alertNode, value, wss);
+          triggerAlert(alertNode, value, wss, deviceId);
           return { value, alert: value >= (alertNode.data.threshold || 70) };
         })
       );
     }
 
     const sub = branchStream.subscribe((result) => {
-      const payload = typeof result === 'object' ? result : { value: result };
+      const value = typeof result === 'object' ? result.value : result;
+      const payload = { type: 'node_execution', sourceNodeId: nodeId, targetNodeId: targetId, value, timestamp: new Date().toISOString() };
+      if (typeof result === 'object') Object.assign(payload, result);
       wss.clients.forEach((client) => {
-        if (client.readyState === 1) client.send(JSON.stringify({ type: 'compiled', ...payload }));
+        if (client.readyState === 1) client.send(JSON.stringify(payload));
       });
     });
 
     activeSubscriptions.push(sub);
 
-    buildStreamChain(targetId, adj, nodes, branchStream, wss, visited);
+    buildStreamChain(targetId, adj, nodes, branchStream, wss, deviceId, visited);
   });
 }
 
@@ -100,6 +108,8 @@ function compileGraph(graph, wss) {
   // Cleanup previous pipeline
   activeSubscriptions.forEach((s) => s.unsubscribe());
   activeSubscriptions.length = 0;
+  pipelineStatus.telemetryIngested = 0;
+  pipelineStatus.alertsFired = 0;
 
   const sensorNode = nodes.find(
     (n) => n.type === 'sensor' || n.type === 'simulatorSource' || n.type === 'httpSource'
@@ -110,7 +120,13 @@ function compileGraph(graph, wss) {
   const stream = getSensorStream(deviceId);
   const adj = buildAdjacency(edges);
 
-  buildStreamChain(sensorNode.id, adj, nodes, stream, wss);
+  buildStreamChain(sensorNode.id, adj, nodes, stream, wss, deviceId);
+
+  pipelineStatus.active = true;
+  pipelineStatus.deviceId = deviceId;
+  pipelineStatus.nodeCount = nodes.length;
+  pipelineStatus.edgeCount = edges.length;
+  pipelineStatus.compiledAt = new Date().toISOString();
 }
 
-module.exports = { compileGraph };
+module.exports = { compileGraph, pipelineStatus, activeSubscriptions, trackIngest };
