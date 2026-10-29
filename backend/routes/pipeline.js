@@ -20,6 +20,40 @@ router.get('/logs', authMiddleware, async (req, res) => {
   }
 });
 
+// Detailed stats with per-device breakdown from RuleLog
+router.get('/stats', authMiddleware, async (req, res) => {
+  try {
+    const perDevice = await RuleLog.aggregate([
+      { $group: {
+        _id: '$deviceId',
+        totalEvaluations: { $sum: 1 },
+        triggered: { $sum: { $cond: ['$triggered', 1, 0] } },
+        avgValue: { $avg: '$value' },
+        maxValue: { $max: '$value' },
+        minValue: { $min: '$value' },
+        lastSeen: { $max: '$timestamp' },
+      }},
+      { $sort: { totalEvaluations: -1 } },
+    ]);
+    const totals = await RuleLog.aggregate([
+      { $group: {
+        _id: null,
+        totalEvaluations: { $sum: 1 },
+        totalTriggered: { $sum: { $cond: ['$triggered', 1, 0] } },
+      }},
+    ]);
+    res.json({
+      ...pipelineStatus,
+      activeSubscriptions: activeSubscriptions.length,
+      perDevice,
+      totalEvaluations: totals[0]?.totalEvaluations || 0,
+      totalTriggered: totals[0]?.totalTriggered || 0,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Named pipeline list
 router.get('/saved', authMiddleware, async (req, res) => {
   try {
