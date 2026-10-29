@@ -40,6 +40,8 @@ The sensor provides temperature readings, the Moving Average node processes the 
 
 The backend compiles the visual graph into an RxJS processing pipeline and evaluates incoming telemetry in real time.
 
+> SMS and email delivery are **mock providers** (logged and shown in the Deliveries tab); no real SMS is sent unless `SMS_WEBHOOK_URL` points to a gateway. Webhooks are real HTTP calls.
+
 ---
 
 # Key Features
@@ -548,6 +550,18 @@ Open a terminal:
 ```bash
 cd backend
 npm install
+```
+
+Create `backend/.env` (or copy `.env.example`):
+
+```env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/nexusflow
+```
+
+Start the server:
+
+```bash
 npm start
 ```
 
@@ -723,4 +737,3 @@ git add .
 git commit -m "Describe your changes"
 git push origin Swati-Sharma
 ```
-
