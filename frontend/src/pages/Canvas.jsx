@@ -267,15 +267,15 @@ export default function Canvas({ user, onLogout }) {
 
       setNodes((nds) => nds.map((node) => {
         if (['sensor', 'simulatorSource', 'httpSource'].includes(node.type) && node.data.deviceId === deviceId)
-          return { ...node, data: { ...node.data, value, history: [...hist], onDelete: () => deleteNode(node.id) } };
+          return { ...node, data: { ...node.data, value, history: [...hist] } };
         if (['filter', 'movingAverage'].includes(node.type))
-          return { ...node, data: { ...node.data, avg, onDelete: () => deleteNode(node.id) } };
+          return { ...node, data: { ...node.data, avg } };
         if (node.type === 'multiply')
-          return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
+          return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)) } };
         if (node.type === 'add')
-          return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
+          return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)) } };
         if (['alert', 'smsAlert', 'emailAlert', 'logAlert', 'webhookAlert'].includes(node.type))
-          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85), onDelete: () => deleteNode(node.id), onThresholdChange: (t) => updateThreshold(node.id, t), onDataChange: (patch) => updateNodeData(node.id, patch) } };
+          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85) } };
         return node;
       }));
     };

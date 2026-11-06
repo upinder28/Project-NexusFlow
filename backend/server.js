@@ -7,22 +7,26 @@ const { getIngest } = require('./ingestService');
 const { createIngestSocketServer } = require('./wsIngest');
 const { deploy, status } = require('./compiler');
 const { configureNotifier, getNotifier } = require('./notifier');
-const pipelineRoutes = require('./routes/pipeline');
 const store = require('./graphStore');
 const stats = require('./statsTracker');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '5mb' })); // a 5000-reading batch is ~600 KB
+app.use(express.json({ limit: '5mb' }));
 
-const { broadcast } = pipelineRoutes;
-configureNotifier({ emit: broadcast }); // delivery state changes reach the canvas live
+const broadcast = (msg) => {
+  const data = JSON.stringify(msg);
+  wss.clients.forEach((ws) => { if (ws.readyState === 1) ws.send(data); });
+};
+app.set('broadcast', broadcast);
+configureNotifier({ emit: broadcast });
 
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/telemetry', require('./routes/telemetry'));
-app.use('/api/compile', pipelineRoutes); // POST / (deploy), /validate, /stop, GET /status, /alerts
-app.use('/api/graph', require('./routes/graph')); // GET/PUT the saved canvas graph
+app.use('/api/compile', require('./routes/pipeline'));
+app.use('/api/graph', require('./routes/graph'));
 app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/mock', require('./routes/mock')); // demo webhook receivers
+app.use('/api/mock', require('./routes/mock'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, uptimeSec: Math.round(process.uptime()) }));
 app.get('/api/stats', (req, res) =>
@@ -34,7 +38,6 @@ connectDB()
     const PORT = process.env.PORT || 5000;
     const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-    // /ws/ingest = devices pushing telemetry, anything else = dashboard / canvas feed
     const ingestWss = createIngestSocketServer({ getIngest });
     server.on('upgrade', (req, socket, head) => {
       const target = req.url && req.url.split('?')[0] === '/ws/ingest' ? ingestWss : wss;
@@ -46,7 +49,6 @@ connectDB()
       ws.send(JSON.stringify({ type: 'pipeline', status: st.running ? 'running' : 'stopped', pipelineId: st.pipelineId }));
     });
 
-    // 1 Hz ingestion stats + 4 Hz latest value per device (throttled, not one WS frame per write)
     const ingest = getIngest();
     setInterval(() => {
       const s = ingest.tick();
@@ -54,10 +56,9 @@ connectDB()
     }, 1000).unref();
     setInterval(() => {
       const latest = ingest.drainLatest();
-      if (wss.clients.size) latest.forEach((r) => broadcast({ type: 'telemetry', ...r }));
+      if (wss.clients.size) latest.forEach((r) => broadcast({ type: 'telemetry', metadata: { deviceId: r.deviceId }, value: r.value, ts: r.ts }));
     }, 250).unref();
 
-    // Re-deploy the pipeline that was running before the last restart
     const saved = store.loadActive();
     if (saved?.graph) {
       try {
@@ -68,9 +69,8 @@ connectDB()
       }
     }
 
-    // Flush buffered readings and pending deliveries before exiting so nothing accepted is lost
     const shutdown = async (sig) => {
-      console.log(`${sig}: flushing ingest buffer and delivery queue...`);
+      console.log(`${sig}: flushing...`);
       await ingest.shutdown().catch((e) => console.error(e.message));
       await getNotifier().drain(5000).catch(() => {});
       process.exit(0);

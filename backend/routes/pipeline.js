@@ -1,15 +1,31 @@
 const express = require('express');
 const router = express.Router();
-const Pipeline = require('../models/Pipeline');
+
 const { pipelineStatus, activeSubscriptions } = require('../compiler');
+const Pipeline = require('../models/Pipeline');
+const { deploy, stop, status } = require('../compiler');
 const RuleLog = require('../models/RuleLog');
 const authMiddleware = require('../middleware/auth');
 
+router.post('/', authMiddleware, (req, res) => {
+  try {
+    const { nodes, edges } = req.body;
+    const broadcast = req.app.get('broadcast');
+    const result = deploy({ nodes, edges }, { emit: broadcast });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message, errors: err.errors || [] });
+  }
+});
+
+router.post('/stop', authMiddleware, (req, res) => {
+  const broadcast = req.app.get('broadcast');
+  const stopped = stop(broadcast);
+  res.json({ ok: true, stopped });
+});
+
 router.get('/status', authMiddleware, (req, res) => {
-  res.json({
-    ...pipelineStatus,
-    activeSubscriptions: activeSubscriptions.length,
-  });
+  res.json(status());
 });
 
 router.get('/logs', authMiddleware, async (req, res) => {
