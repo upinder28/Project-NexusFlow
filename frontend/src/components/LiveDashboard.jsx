@@ -20,6 +20,7 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
   const [theme, setTheme] = useState('dark');
   const [compareDevices, setCompareDevices] = useState([]);
   const [compareData, setCompareData] = useState([]);
+  const [detailedStats, setDetailedStats] = useState(null);
 
   const isDark = theme === 'dark';
   const T = isDark ? darkT : lightT;
@@ -49,15 +50,19 @@ export default function LiveDashboard({ isLive, currentRate, totalPoints }) {
 
   // Fetch rule log from MongoDB when tab is active
   useEffect(() => {
-    if (activeTab !== 'rulelog') return;
+    if (activeTab !== 'rulelog' && activeTab !== 'stats') return;
     const token = localStorage.getItem('nf_token');
-    setRuleLogLoading(true);
-    fetch('http://localhost:5000/api/pipeline/logs', {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((data) => { setRuleLog(Array.isArray(data) ? data : []); setRuleLogLoading(false); })
-      .catch(() => setRuleLogLoading(false));
+    if (activeTab === 'rulelog') {
+      setRuleLogLoading(true);
+      fetch('http://localhost:5000/api/pipeline/logs', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((data) => { setRuleLog(Array.isArray(data) ? data : []); setRuleLogLoading(false); })
+        .catch(() => setRuleLogLoading(false));
+    }
+    if (activeTab === 'stats') {
+      fetch('http://localhost:5000/api/pipeline/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then((r) => r.json()).then(setDetailedStats).catch(() => {});
+    }
   }, [activeTab]);
 
   // Build comparison chart data whenever deviceCharts updates
@@ -146,6 +151,7 @@ return (
               ['compare', 'Multi-Sensor Compare'],
               ['alerts', 'Alert History'],
               ['rulelog', 'Rule Log (DB)'],
+              ['stats', 'Pipeline Stats'],
               ['webhooks', `Webhooks (${webhookLog.length})`],
             ].map(([id, label]) => (
               <button
@@ -502,7 +508,77 @@ return (
           )}
         </div>
       )}
-      {/* ── TAB 7: WEBHOOKS ── */}
+      {/* ── TAB 7: PIPELINE STATS ── */}
+      {activeTab === 'stats' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Summary KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+            {[
+              { label: 'TOTAL EVALUATIONS', val: detailedStats?.totalEvaluations ?? '—', color: '#38bdf8' },
+              { label: 'TOTAL TRIGGERED', val: detailedStats?.totalTriggered ?? '—', color: '#fb7185' },
+              { label: 'ACTIVE SUBSCRIPTIONS', val: detailedStats?.activeSubscriptions ?? '—', color: '#a78bfa' },
+            ].map(({ label, val, color }) => (
+              <div key={label} style={{ ...styles.kpiCard, background: T.surface, border: `1px solid ${T.border}` }}>
+                <span style={{ ...styles.kpiLabel, color: T.textFaint }}>{label}</span>
+                <span style={{ ...styles.kpiVal, color }}>{typeof val === 'number' ? val.toLocaleString() : val}</span>
+              </div>
+            ))}
+          </div>
+          {/* Per-device breakdown table */}
+          <div style={{ ...styles.chartCard, background: T.surface, border: `1px solid ${T.border}` }}>
+            <div style={styles.cardHeader}>
+              <span style={{ ...styles.cardTitle, color: T.textStrong }}>📊 Per-Device Rule Evaluation Breakdown</span>
+              <button
+                style={{ ...styles.testBtn, padding: '4px 10px', fontSize: 10 }}
+                onClick={() => {
+                  const token = localStorage.getItem('nf_token');
+                  fetch('http://localhost:5000/api/pipeline/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then((r) => r.json()).then(setDetailedStats).catch(() => {});
+                }}
+              >↻ Refresh</button>
+            </div>
+            {!detailedStats?.perDevice?.length ? (
+              <div style={{ ...styles.emptyPrompt, color: T.textFaint }}>No data yet. Deploy a pipeline and trigger some rules.</div>
+            ) : (
+              <table style={styles.whTable}>
+                <thead>
+                  <tr>
+                    {['Device', 'Evaluations', 'Triggered', 'Trigger Rate', 'Avg °C', 'Min °C', 'Max °C', 'Last Seen'].map((h) => (
+                      <th key={h} style={{ ...styles.th, color: T.textFaint, borderColor: T.border }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailedStats.perDevice.map((d) => {
+                    const rate = d.totalEvaluations ? ((d.triggered / d.totalEvaluations) * 100).toFixed(1) : 0;
+                    return (
+                      <tr key={d._id}>
+                        <td style={{ ...styles.td, color: '#38bdf8', fontWeight: 600 }}>{d._id}</td>
+                        <td style={{ ...styles.td, color: T.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>{d.totalEvaluations.toLocaleString()}</td>
+                        <td style={{ ...styles.td, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace' }}>{d.triggered.toLocaleString()}</td>
+                        <td style={styles.td}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 60, height: 6, background: T.gridLine, borderRadius: 3, overflow: 'hidden' }}>
+                              <div style={{ width: `${rate}%`, height: '100%', background: rate > 50 ? '#fb7185' : '#34d399', borderRadius: 3 }} />
+                            </div>
+                            <span style={{ fontSize: 10, color: T.textMuted }}>{rate}%</span>
+                          </div>
+                        </td>
+                        <td style={{ ...styles.td, color: T.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>{d.avgValue?.toFixed(1)}</td>
+                        <td style={{ ...styles.td, color: '#38bdf8', fontFamily: 'JetBrains Mono, monospace' }}>{d.minValue?.toFixed(1)}</td>
+                        <td style={{ ...styles.td, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace' }}>{d.maxValue?.toFixed(1)}</td>
+                        <td style={{ ...styles.td, color: T.textFaint, fontSize: 10 }}>{new Date(d.lastSeen).toLocaleTimeString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 8: WEBHOOKS ── */}
       {activeTab === 'webhooks' && (
         <div style={styles.webhookSection}>
           <div style={{ ...styles.webhookHeaderRow, background: T.surface, border: `1px solid ${T.border}` }}>

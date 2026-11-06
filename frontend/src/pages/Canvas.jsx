@@ -144,10 +144,14 @@ export default function Canvas({ user, onLogout }) {
   const [savedPipelines, setSavedPipelines] = useState([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveName, setSaveName] = useState('');
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
   const valuesRef = useRef({});
   const historyRef = useRef({});
   const rateRef = useRef(0);
   const logRef = useRef(null);
+  const isUndoRedo = useRef(false);
 
   const pipeline = buildPipeline(nodes, edges);
 
@@ -158,7 +162,50 @@ export default function Canvas({ user, onLogout }) {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
+    // Push to undo stack on every real change (not undo/redo)
+    if (!isUndoRedo.current) {
+      setUndoStack((prev) => [...prev.slice(-29), { nodes, edges }]);
+      setRedoStack([]);
+    }
+    isUndoRedo.current = false;
   }, [nodes, edges]);
+
+  const handleUndo = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length < 2) return prev;
+      const next = [...prev];
+      const current = next.pop();
+      const target = next[next.length - 1];
+      setRedoStack((r) => [...r, current]);
+      isUndoRedo.current = true;
+      setNodes(target.nodes);
+      setEdges(target.edges);
+      return next;
+    });
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    setRedoStack((prev) => {
+      if (!prev.length) return prev;
+      const next = [...prev];
+      const target = next.pop();
+      setUndoStack((u) => [...u, target]);
+      isUndoRedo.current = true;
+      setNodes(target.nodes);
+      setEdges(target.edges);
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcuts Ctrl+Z / Ctrl+Y
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); handleUndo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); handleRedo(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleUndo, handleRedo]);
 
   useEffect(() => {
     const interval = setInterval(() => { setDataRate(rateRef.current); rateRef.current = 0; }, 1000);
@@ -379,6 +426,8 @@ export default function Canvas({ user, onLogout }) {
           <button style={s.btnGhost} onClick={() => setShowInspector(i => !i)}>🔍 {showInspector ? 'Hide Inspector' : 'Inspector'}</button>
           <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
           <button style={s.btnGhost} onClick={() => { setShowSaveModal(m => !m); fetchSavedPipelines(); }}>📂 Pipelines</button>
+          <button style={s.btnGhost} onClick={handleUndo} disabled={undoStack.length < 2} title="Undo (Ctrl+Z)">↩ Undo</button>
+          <button style={s.btnGhost} onClick={handleRedo} disabled={redoStack.length === 0} title="Redo (Ctrl+Y)">↪ Redo</button>
           <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
           {user && <span style={s.userChip}>👤 {user.name}</span>}
           {onLogout && <button style={s.btnLogout} onClick={onLogout}>Sign Out</button>}
@@ -428,30 +477,47 @@ export default function Canvas({ user, onLogout }) {
 
         {/* ── SIDEBAR ── */}
         <aside style={s.sidebar}>
-          {SIDEBAR_SECTIONS.map((sec) => (
-            <div key={sec.label} style={s.secWrap}>
-              <div style={s.secHead}>
-                <span style={{ ...s.secDot, background: sec.color }} />
-                <span style={{ ...s.secLabel, color: sec.color }}>{sec.label}</span>
-              </div>
-              {sec.items.map(({ type, label, icon, desc }) => (
-                <div
-                  key={type} draggable
-                  onClick={() => addNode(type)}
-                  onDragStart={(e) => e.dataTransfer.setData('nodeType', type)}
-                  style={s.nodeCard}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = sec.bg; e.currentTarget.style.borderColor = sec.color + '55'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#ffffff0d'; }}
-                >
-                  <div style={{ ...s.nodeCardIcon, background: sec.bg, color: sec.color }}>{icon}</div>
-                  <div style={s.nodeCardText}>
-                    <span style={s.nodeCardLabel}>{label}</span>
-                    <span style={s.nodeCardDesc}>{desc}</span>
-                  </div>
+          {/* Search */}
+          <input
+            style={s.sidebarSearch}
+            placeholder="🔍 Search nodes…"
+            value={sidebarSearch}
+            onChange={(e) => setSidebarSearch(e.target.value)}
+          />
+          {SIDEBAR_SECTIONS.map((sec) => {
+            const filtered = sec.items.filter(
+              (item) => !sidebarSearch || item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) || item.desc.toLowerCase().includes(sidebarSearch.toLowerCase())
+            );
+            if (!filtered.length) return null;
+            const sectionCount = nodes.filter((n) => sec.items.some((i) => i.type === n.type)).length;
+            return (
+              <div key={sec.label} style={s.secWrap}>
+                <div style={s.secHead}>
+                  <span style={{ ...s.secDot, background: sec.color }} />
+                  <span style={{ ...s.secLabel, color: sec.color }}>{sec.label}</span>
+                  {sectionCount > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, color: sec.color, background: `${sec.color}18`, border: `1px solid ${sec.color}33`, borderRadius: 8, padding: '1px 5px' }}>{sectionCount}</span>
+                  )}
                 </div>
-              ))}
-            </div>
-          ))}
+                {filtered.map(({ type, label, icon, desc }) => (
+                  <div
+                    key={type} draggable
+                    onClick={() => addNode(type)}
+                    onDragStart={(e) => e.dataTransfer.setData('nodeType', type)}
+                    style={s.nodeCard}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = sec.bg; e.currentTarget.style.borderColor = sec.color + '55'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#ffffff0d'; }}
+                  >
+                    <div style={{ ...s.nodeCardIcon, background: sec.bg, color: sec.color }}>{icon}</div>
+                    <div style={s.nodeCardText}>
+                      <span style={s.nodeCardLabel}>{label}</span>
+                      <span style={s.nodeCardDesc}>{desc}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </aside>
 
         {/* ── CANVAS + TABLE ── */}
@@ -557,6 +623,46 @@ export default function Canvas({ user, onLogout }) {
           </div>
         </aside>
       </div>
+
+      {/* ── PIPELINE SAVE/LOAD MODAL ── */}
+      {showSaveModal && (
+        <div style={s.modalOverlay} onClick={() => setShowSaveModal(false)}>
+          <div style={s.modalBox} onClick={(e) => e.stopPropagation()}>
+            <div style={s.modalHeader}>
+              <span style={s.modalTitle}>📂 Saved Pipelines</span>
+              <button style={s.inspClose} onClick={() => setShowSaveModal(false)}>✕</button>
+            </div>
+            {/* Save current */}
+            <div style={s.modalSaveRow}>
+              <input
+                style={s.modalInput}
+                placeholder="Pipeline name…"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveNamed()}
+              />
+              <button style={s.modalSaveBtn} onClick={handleSaveNamed}>✓ Save Current</button>
+            </div>
+            {/* List */}
+            <div style={s.modalList}>
+              {savedPipelines.length === 0 ? (
+                <div style={{ color: '#475569', fontSize: 11, padding: '12px 0', textAlign: 'center' }}>No saved pipelines yet.</div>
+              ) : (
+                savedPipelines.map((p) => (
+                  <div key={p._id} style={s.modalPipelineRow}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{p.name}</div>
+                      <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>{new Date(p.savedAt).toLocaleString()}</div>
+                    </div>
+                    <button style={s.modalLoadBtn} onClick={() => handleLoadPipeline(p._id)}>↑ Load</button>
+                    <button style={s.modalDeleteBtn} onClick={() => handleDeletePipeline(p._id)}>✕</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── INSPECTOR PANEL ── */}
       {showInspector && (
@@ -706,4 +812,18 @@ const s = {
   inspectorBody: { flex: 1, overflowY: 'auto', padding: '10px 14px' },
   inspPre: { fontSize: 10, color: '#64748b', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#060910', border: '1px solid #1e293b', borderRadius: 6, padding: 10, maxHeight: 180, overflowY: 'auto' },
   inspBtn: { background: '#1e293b', border: '1px solid #334155', color: '#94a3b8', borderRadius: 5, padding: '4px 10px', fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif' },
+
+  sidebarSearch: { width: '100%', background: '#060910', border: '1px solid #1e293b', borderRadius: 7, padding: '6px 10px', color: '#e2e8f0', fontSize: 11, fontFamily: 'Inter, sans-serif', marginBottom: 10, outline: 'none' },
+
+  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modalBox: { background: '#0a0d16', border: '1px solid #1e293b', borderRadius: 12, padding: 20, width: 420, maxHeight: '70vh', display: 'flex', flexDirection: 'column', gap: 12 },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: 14, fontWeight: 700, color: '#e2e8f0' },
+  modalSaveRow: { display: 'flex', gap: 8 },
+  modalInput: { flex: 1, background: '#060910', border: '1px solid #1e293b', borderRadius: 7, padding: '7px 10px', color: '#e2e8f0', fontSize: 11, fontFamily: 'Inter, sans-serif', outline: 'none' },
+  modalSaveBtn: { background: 'linear-gradient(135deg, #0f2d1a, #14532d)', color: '#34d399', border: '1px solid #16a34a', borderRadius: 7, padding: '6px 14px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' },
+  modalList: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 },
+  modalPipelineRow: { display: 'flex', alignItems: 'center', gap: 8, background: '#ffffff05', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px' },
+  modalLoadBtn: { background: '#1e3a5f', color: '#38bdf8', border: '1px solid #38bdf840', borderRadius: 6, padding: '4px 10px', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' },
+  modalDeleteBtn: { background: 'transparent', color: '#f85149', border: '1px solid #f8514930', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif' },
 };
