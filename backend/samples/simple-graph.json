@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Turbine monitor"
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "type": "sensor",
+      "position": {
+        "x": 80,
+        "y": 180
+      },
+      "data": {
+        "label": "Turbine Sensor",
+        "deviceId": "device-1"
+      }
+    },
+    {
+      "id": "2",
+      "type": "movingAverage",
+      "position": {
+        "x": 320,
+        "y": 180
+      },
+      "data": {
+        "label": "Moving Average",
+        "windowSize": 5
+      }
+    },
+    {
+      "id": "3",
+      "type": "smsAlert",
+      "position": {
+        "x": 560,
+        "y": 180
+      },
+      "data": {
+        "label": "SMS Alert",
+        "threshold": 85,
+        "actionType": "sms"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1-2",
+      "source": "1",
+      "target": "2"
+    },
+    {
+      "id": "e2-3",
+      "source": "2",
+      "target": "3"
+    }
+  ]
+}
+

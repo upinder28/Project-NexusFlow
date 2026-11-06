@@ -3,32 +3,80 @@ const express = require('express');
 const cors = require('cors');
 const wss = require('./wss');
 const connectDB = require('./db');
+const { getIngest } = require('./ingestService');
+const { createIngestSocketServer } = require('./wsIngest');
+const { deploy, status } = require('./compiler');
+const { configureNotifier, getNotifier } = require('./notifier');
+const pipelineRoutes = require('./routes/pipeline');
+const store = require('./graphStore');
+const stats = require('./statsTracker');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '5mb' })); // a 5000-reading batch is ~600 KB
+
+const { broadcast } = pipelineRoutes;
+configureNotifier({ emit: broadcast }); // delivery state changes reach the canvas live
 
 app.use('/api/telemetry', require('./routes/telemetry'));
+app.use('/api/compile', pipelineRoutes); // POST / (deploy), /validate, /stop, GET /status, /alerts
+app.use('/api/graph', require('./routes/graph')); // GET/PUT the saved canvas graph
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/mock', require('./routes/mock')); // demo webhook receivers
 
-const { compileGraph } = require('./compiler');
-app.post('/api/compile', (req, res) => {
-  try {
-    compileGraph(req.body, wss);
-    res.json({ success: true, message: 'Graph compiled and stream started' });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.get('/api/health', (req, res) => res.json({ ok: true, uptimeSec: Math.round(process.uptime()) }));
+app.get('/api/stats', (req, res) =>
+  res.json({ ...stats.snapshot(), pipeline: status(), ingest: getIngest().getStats(), notifications: getNotifier().getStats() })
+);
 
 connectDB()
   .then(() => {
-    const server = app.listen(process.env.PORT, () =>
-      console.log(`Server running on port ${process.env.PORT}`)
-    );
+    const PORT = process.env.PORT || 5000;
+    const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+    // /ws/ingest = devices pushing telemetry, anything else = dashboard / canvas feed
+    const ingestWss = createIngestSocketServer({ getIngest });
     server.on('upgrade', (req, socket, head) => {
-      wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+      const target = req.url && req.url.split('?')[0] === '/ws/ingest' ? ingestWss : wss;
+      target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
     });
-    wss.on('connection', () => console.log('WebSocket client connected'));
+    wss.on('connection', (ws) => {
+      console.log('WebSocket client connected');
+      const st = status();
+      ws.send(JSON.stringify({ type: 'pipeline', status: st.running ? 'running' : 'stopped', pipelineId: st.pipelineId }));
+    });
+
+    // 1 Hz ingestion stats + 4 Hz latest value per device (throttled, not one WS frame per write)
+    const ingest = getIngest();
+    setInterval(() => {
+      const s = ingest.tick();
+      if (wss.clients.size) broadcast({ type: 'stats', ...s });
+    }, 1000).unref();
+    setInterval(() => {
+      const latest = ingest.drainLatest();
+      if (wss.clients.size) latest.forEach((r) => broadcast({ type: 'telemetry', ...r }));
+    }, 250).unref();
+
+    // Re-deploy the pipeline that was running before the last restart
+    const saved = store.loadActive();
+    if (saved?.graph) {
+      try {
+        deploy(saved.graph, { emit: broadcast });
+        console.log(`Restored active pipeline (deployed ${saved.deployedAt})`);
+      } catch (err) {
+        console.error('Could not restore active pipeline:', err.message);
+      }
+    }
+
+    // Flush buffered readings and pending deliveries before exiting so nothing accepted is lost
+    const shutdown = async (sig) => {
+      console.log(`${sig}: flushing ingest buffer and delivery queue...`);
+      await ingest.shutdown().catch((e) => console.error(e.message));
+      await getNotifier().drain(5000).catch(() => {});
+      process.exit(0);
+    };
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
   })
   .catch((err) => {
     console.error('MongoDB connection failed:', err.message);

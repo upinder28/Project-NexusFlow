@@ -1,116 +1,167 @@
-const { map, bufferCount, filter } = require('rxjs/operators');
-const { getSensorStream } = require('./streamEngine');
-const { triggerAlert } = require('./alertEngine');
+// Logic Compiler: React Flow JSON graph -> executable RxJS data streams.
+//
+//   validate -> walk nodes in topological order -> build one shared Observable per node
+//   (fan-out = several subscribers on a share()d node, fan-in = merge of all parent streams)
+//   -> subscribe action sinks + a throttled "node tap" per node so the canvas shows live values.
+//
+// compileGraph() returns a Pipeline whose dispose() tears every subscription down, so
+// re-deploying never leaves the old graph running (the previous version leaked a
+// subscription on every /api/compile call and fired duplicate alerts).
+const { Observable, merge, interval, Subscription } = require('rxjs');
+const { map, share, auditTime, tap } = require('rxjs/operators');
+const { validateGraph } = require('./graphValidator');
+const { mathOperator, filterOperator } = require('./operators');
+const { createAlertEvaluator } = require('./alertEngine');
+const defaultBus = require('./streamEngine');
+const stats = require('./statsTracker');
 
-const activeSubscriptions = [];
-
-function validateGraph(nodes, edges) {
-  const nodeIds = new Set(nodes.map((n) => n.id));
-  for (const { source, target } of edges) {
-    if (!nodeIds.has(source)) return `Edge source "${source}" not found`;
-    if (!nodeIds.has(target)) return `Edge target "${target}" not found`;
-  }
-  const maNode = nodes.find((n) => n.type === 'movingAverage');
-  if (maNode) {
-    const ws = maNode.data?.windowSize;
-    if (!Number.isInteger(ws) || ws < 1) return 'Moving Average windowSize must be a positive integer';
-  }
-  return null;
-}
-
-function applyMathOperation(stream, node) {
-  const { operation, operand = 1, windowSize = 5 } = node.data;
-  // node.type 'movingAverage' maps to operation 'movingAverage'
-  const op = operation || node.type;
-  switch (op) {
-    case 'movingAverage':
-      return stream.pipe(
-        bufferCount(windowSize, 1),
-        map((buf) => parseFloat((buf.reduce((a, b) => a + b, 0) / buf.length).toFixed(2)))
-      );
-    case 'multiply':
-      return stream.pipe(map((v) => parseFloat((v * operand).toFixed(2))));
-    case 'add':
-      return stream.pipe(map((v) => parseFloat((v + operand).toFixed(2))));
-    case 'threshold':
-    case 'filter':
-      return stream.pipe(filter((v) => v >= operand));
-    default:
-      return stream.pipe(
-        bufferCount(windowSize, 1),
-        map((buf) => parseFloat((buf.reduce((a, b) => a + b, 0) / buf.length).toFixed(2)))
-      );
+class GraphValidationError extends Error {
+  constructor(result) {
+    super('Graph validation failed');
+    this.name = 'GraphValidationError';
+    this.errors = result.errors;
+    this.warnings = result.warnings;
   }
 }
 
-// Build adjacency list: source -> [target1, target2, ...]
-function buildAdjacency(edges) {
-  const adj = {};
-  edges.forEach(({ source, target }) => {
-    if (!adj[source]) adj[source] = [];
-    if (!adj[source].includes(target)) adj[source].push(target);
-  });
-  return adj;
-}
-
-function buildStreamChain(nodeId, adj, nodes, baseStream, wss, visited = new Set()) {
-  if (visited.has(nodeId)) return; // cycle guard
-  visited.add(nodeId);
-
-  const targets = adj[nodeId] || [];
-  targets.forEach((targetId) => {
-    const targetNode = nodes.find((n) => n.id === targetId);
-    if (!targetNode) return;
-
-    let branchStream = baseStream;
-
-    if (['filter', 'mathOperation', 'movingAverage', 'multiply', 'add'].includes(targetNode.type)) {
-      branchStream = applyMathOperation(branchStream, targetNode);
-    }
-
-    if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(targetNode.type)) {
-      const alertNode = targetNode;
-      branchStream = branchStream.pipe(
-        map((value) => {
-          triggerAlert(alertNode, value, wss);
-          return { value, alert: value >= (alertNode.data.threshold || 70) };
-        })
-      );
-    }
-
-    const sub = branchStream.subscribe((result) => {
-      const payload = typeof result === 'object' ? result : { value: result };
-      wss.clients.forEach((client) => {
-        if (client.readyState === 1) client.send(JSON.stringify({ type: 'compiled', ...payload }));
-      });
+// Mock sensor: bounded random walk, generated inside the backend (no external simulator needed).
+function simulatorStream({ intervalMs, base, min, max }, random = Math.random) {
+  return new Observable((subscriber) => {
+    let current = Math.min(max, Math.max(min, base));
+    const sub = interval(intervalMs).subscribe(() => {
+      current += (random() - 0.48) * 3;
+      current = Math.max(min, Math.min(max, current));
+      subscriber.next(Number(current.toFixed(2)));
     });
-
-    activeSubscriptions.push(sub);
-
-    buildStreamChain(targetId, adj, nodes, branchStream, wss, visited);
+    return () => sub.unsubscribe();
   });
 }
 
-function compileGraph(graph, wss) {
-  const { nodes, edges } = graph;
+/**
+ * @param graph   { nodes, edges } as serialised by the frontend
+ * @param opts.emit                  (event) => void, broadcast hook (WebSocket)
+ * @param opts.bus                   { getSensorStream(deviceId) }
+ * @param opts.nodeUpdateIntervalMs  max UI update rate per node (0 = unthrottled, for tests)
+ * @param opts.notify                (alertRecord) => void, delivery hook (default: notifier queue)
+ * @param opts.now / opts.random     injectable for tests
+ */
+function compileGraph(graph, opts = {}) {
+  const {
+    emit = () => {},
+    bus = defaultBus,
+    nodeUpdateIntervalMs = 200,
+    now = Date.now,
+    random = Math.random,
+    notify,
+  } = opts;
 
-  const validationError = validateGraph(nodes, edges);
-  if (validationError) throw new Error(validationError);
+  const result = validateGraph(graph);
+  if (!result.valid) throw new GraphValidationError(result);
 
-  // Cleanup previous pipeline
-  activeSubscriptions.forEach((s) => s.unsubscribe());
-  activeSubscriptions.length = 0;
+  const byId = new Map(result.nodes.map((n) => [n.id, n]));
+  const parents = new Map(result.nodes.map((n) => [n.id, []]));
+  result.edges.forEach((e) => parents.get(e.target).push(e.source));
 
-  const sensorNode = nodes.find(
-    (n) => n.type === 'sensor' || n.type === 'simulatorSource' || n.type === 'httpSource'
-  );
-  if (!sensorNode) throw new Error('No sensor node found in graph');
+  const pipelineId = `pl_${now().toString(36)}`;
+  const subscription = new Subscription();
+  const streams = new Map(); // nodeId -> shared Observable of the node's output
+  const evaluators = new Map(); // alert nodeId -> evaluator
+  const metrics = new Map(result.nodes.map((n) => [n.id, { count: 0, lastTs: null }])); // messages seen per node
 
-  const deviceId = sensorNode.data?.deviceId || sensorNode.data?.label || 'device-1';
-  const stream = getSensorStream(deviceId);
-  const adj = buildAdjacency(edges);
+  for (const id of result.order) {
+    const node = byId.get(id);
+    let out$;
 
-  buildStreamChain(sensorNode.id, adj, nodes, stream, wss);
+    if (node.category === 'source') {
+      out$ = node.type === 'simulatorSource'
+        ? simulatorStream(node.data, random)
+        : bus.getSensorStream(node.data.deviceId); // sensor + httpSource both read the ingestion bus
+    } else {
+      const inputs = parents.get(id).map((p) => streams.get(p));
+      const input$ = inputs.length === 1 ? inputs[0] : merge(...inputs); // fan-in
+      if (node.type === 'mathOperation') out$ = input$.pipe(mathOperator(node.data));
+      else if (node.type === 'filter') out$ = input$.pipe(filterOperator(node.data));
+      else if (node.type === 'alert') {
+        const evaluate = createAlertEvaluator(node, emit, now, notify);
+        evaluators.set(id, evaluate);
+        out$ = input$.pipe(map(evaluate)); // -> { value, triggered, fired }
+      }
+    }
+    const m = metrics.get(id);
+    streams.set(id, out$.pipe(tap(() => { m.count++; m.lastTs = now(); }), share())); // fan-out: compute once, many subscribers
+  }
+
+  // Live tap per node: what the canvas displays. Throttled so a 5k msg/s source can't flood the UI.
+  for (const [id, out$] of streams) {
+    const throttled$ = nodeUpdateIntervalMs > 0 ? out$.pipe(auditTime(nodeUpdateIntervalMs)) : out$;
+    subscription.add(
+      throttled$.subscribe((v) => {
+        const isObj = v !== null && typeof v === 'object';
+        emit({
+          type: 'node',
+          pipelineId,
+          nodeId: id,
+          value: isObj ? v.value : v,
+          ...(isObj ? { triggered: v.triggered } : {}),
+          ts: now(),
+        });
+      })
+    );
+  }
+
+  const summary = {
+    pipelineId,
+    startedAt: new Date(now()).toISOString(),
+    nodeCount: result.nodes.length,
+    edgeCount: result.edges.length,
+    order: result.order,
+    warnings: result.warnings,
+  };
+
+  return {
+    ...summary,
+    streams, // exposed for tests
+    getMetrics: () => Object.fromEntries(metrics),
+    dispose: () => subscription.unsubscribe(),
+  };
 }
 
-module.exports = { compileGraph };
+// ---- single active pipeline -------------------------------------------------------------
+let active = null;
+
+function deploy(graph, opts = {}) {
+  let next;
+  try {
+    next = compileGraph(graph, opts); // throws before touching the running pipeline
+  } catch (err) {
+    stats.inc('compileFailures');
+    throw err;
+  }
+  stats.inc('compileRuns');
+  if (active) active.dispose();
+  active = next;
+  opts.emit?.({ type: 'pipeline', status: 'running', pipelineId: next.pipelineId });
+  return summaryOf(next);
+}
+
+function stop(emit) {
+  if (!active) return false;
+  const id = active.pipelineId;
+  active.dispose();
+  active = null;
+  emit?.({ type: 'pipeline', status: 'stopped', pipelineId: id });
+  return true;
+}
+
+const summaryOf = (p) => ({
+  pipelineId: p.pipelineId,
+  startedAt: p.startedAt,
+  nodeCount: p.nodeCount,
+  edgeCount: p.edgeCount,
+  order: p.order,
+  warnings: p.warnings,
+});
+
+const status = () => (active ? { running: true, ...summaryOf(active), metrics: active.getMetrics() } : { running: false });
+
+module.exports = { compileGraph, deploy, stop, status, GraphValidationError, simulatorStream };

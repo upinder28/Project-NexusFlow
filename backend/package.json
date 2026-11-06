@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "test": "node --test",
+    "start": "node server.js",
+    "simulate": "node simulator.js",
+    "stress": "node stressTest.js",
+    "benchmark": "node scripts/benchmark.js",
+    "storage-compare": "node scripts/storageCompare.js"
   },
   "keywords": [],
   "author": "",
