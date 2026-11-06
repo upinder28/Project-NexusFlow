@@ -15,13 +15,22 @@ import MovingAverageNode from '../nodes/MovingAverageNode';
 import SmsAlertNode from '../nodes/SmsAlertNode';
 import EmailAlertNode from '../nodes/EmailAlertNode';
 import LogAlertNode from '../nodes/LogAlertNode';
+import LiveChart from '../components/LiveChart';
+import LiveDashboard from '../components/LiveDashboard';
+import WebhookAlertNode from '../nodes/WebhookAlertNode';
+import GlowEdge from '../components/GlowEdge';
+import InspectorPanel from '../components/InspectorPanel';
+import { runSerializationProof, validateGraph, serializeGraph } from '../lib/graphSerializer';
 
 const nodeTypes = {
   sensor: SensorNode, filter: FilterNode, alert: AlertNode,
   httpSource: HttpSourceNode, simulatorSource: SimulatorSourceNode,
   multiply: MultiplyNode, add: AddNode, movingAverage: MovingAverageNode,
   smsAlert: SmsAlertNode, emailAlert: EmailAlertNode, logAlert: LogAlertNode,
+  webhookAlert: WebhookAlertNode,
 };
+
+const edgeTypes = { glowEdge: GlowEdge };
 
 const STORAGE_KEY = 'nexusflow_graph';
 
@@ -68,6 +77,7 @@ const SIDEBAR_SECTIONS = [
       { type: 'smsAlert', label: 'SMS Alert', icon: '📱', desc: 'Send SMS' },
       { type: 'emailAlert', label: 'Email', icon: '📧', desc: 'Send email' },
       { type: 'logAlert', label: 'Log', icon: '📋', desc: 'Log event' },
+      { type: 'webhookAlert', label: 'Webhook', icon: '🔗', desc: 'HTTP webhook' },
       { type: 'alert', label: 'Alert', icon: '🔔', desc: 'Generic alert' },
     ],
   },
@@ -85,6 +95,7 @@ const NODE_DEFAULTS = {
   smsAlert: { label: 'SMS Alert', threshold: 85, actionType: 'sms' },
   emailAlert: { label: 'Email Alert', threshold: 85, actionType: 'email' },
   logAlert: { label: 'Log Alert', threshold: 85, actionType: 'log' },
+  webhookAlert: { label: 'Webhook Alert', threshold: 85, actionType: 'webhook', target: 'http://localhost:5000/api/webhook/receiver' },
 };
 
 const EDGE_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#fbbf24', '#60a5fa'];
@@ -92,7 +103,7 @@ const EDGE_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#fbbf24', '#60
 const NODE_LABEL = {
   sensor: 'Sensor', simulatorSource: 'Simulator', httpSource: 'HTTP',
   movingAverage: 'Moving Avg', multiply: 'Multiply', add: 'Add', filter: 'Filter',
-  smsAlert: 'SMS Alert', emailAlert: 'Email Alert', logAlert: 'Log Alert', alert: 'Alert',
+  smsAlert: 'SMS Alert', emailAlert: 'Email Alert', logAlert: 'Log Alert', webhookAlert: 'Webhook Alert', alert: 'Alert',
 };
 
 function buildPipeline(nodes, edges) {
@@ -114,7 +125,7 @@ function buildPipeline(nodes, edges) {
   return steps;
 }
 
-export default function Canvas() {
+export default function Canvas({ user, onLogout }) {
   const saved = loadGraph();
   const [nodes, setNodes, onNodesChange] = useNodesState(saved.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(saved.edges);
@@ -126,6 +137,13 @@ export default function Canvas() {
   const [alertLog, setAlertLog] = useState([]);
   const [telemetryRows, setTelemetryRows] = useState([]);
   const [showTable, setShowTable] = useState(false);
+  const [activeSubs, setActiveSubs] = useState(0);
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [showInspector, setShowInspector] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState('json');
+  const [savedPipelines, setSavedPipelines] = useState([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveName, setSaveName] = useState('');
   const valuesRef = useRef({});
   const historyRef = useRef({});
   const rateRef = useRef(0);
@@ -156,7 +174,6 @@ export default function Canvas() {
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
 
-      // Alert log entries
       if (data.type === 'alert' && data.triggered) {
         const entry = {
           id: Date.now(),
@@ -170,6 +187,16 @@ export default function Canvas() {
         return;
       }
       if (data.type === 'compiled') return;
+
+      if (data.type === 'node_execution') {
+        const { sourceNodeId, targetNodeId } = data;
+        setEdges((eds) => eds.map((e) =>
+          e.source === sourceNodeId && e.target === targetNodeId
+            ? { ...e, type: 'glowEdge', data: { ...e.data, activeAt: Date.now() } }
+            : e
+        ));
+        return;
+      }
 
       const { metadata, value } = data;
       const deviceId = metadata?.deviceId;
@@ -200,8 +227,8 @@ export default function Canvas() {
           return { ...node, data: { ...node.data, result: parseFloat((value * (node.data.operand ?? 1)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
         if (node.type === 'add')
           return { ...node, data: { ...node.data, result: parseFloat((value + (node.data.operand ?? 0)).toFixed(2)), onDelete: () => deleteNode(node.id) } };
-        if (['alert', 'smsAlert', 'emailAlert', 'logAlert'].includes(node.type))
-          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85), onDelete: () => deleteNode(node.id), onThresholdChange: (t) => updateThreshold(node.id, t) } };
+        if (['alert', 'smsAlert', 'emailAlert', 'logAlert', 'webhookAlert'].includes(node.type))
+          return { ...node, data: { ...node.data, avg, triggered: avg > (node.data.threshold ?? 85), onDelete: () => deleteNode(node.id), onThresholdChange: (t) => updateThreshold(node.id, t), onDataChange: (patch) => updateNodeData(node.id, patch) } };
         return node;
       }));
     };
@@ -237,15 +264,29 @@ export default function Canvas() {
     setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, threshold } } : n));
   }, []);
 
+  const updateNodeData = useCallback((id, patch) => {
+    setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));
+  }, []);
+
   const handleCompile = async () => {
     setCompileStatus('compiling');
+    const token = localStorage.getItem('nf_token');
     try {
       const res = await fetch('http://localhost:5000/api/compile', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ nodes, edges }),
       });
-      if (res.ok) setCompileStatus('running');
-      else setCompileStatus('failed');
+      if (res.ok) {
+        setCompileStatus('running');
+        const statusRes = await fetch('http://localhost:5000/api/pipeline/status', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (statusRes.ok) {
+          const status = await statusRes.json();
+          setActiveSubs(status.activeSubscriptions || 0);
+        }
+      } else setCompileStatus('failed');
     } catch (e) { setCompileStatus('failed'); }
   };
 
@@ -261,8 +302,44 @@ export default function Canvas() {
     setNodes(defaultNodes); setEdges(defaultEdges); setCompileStatus('idle'); setAlertLog([]); setTelemetryRows([]);
   };
 
+  const fetchSavedPipelines = async () => {
+    const token = localStorage.getItem('nf_token');
+    try {
+      const res = await fetch('http://localhost:5000/api/pipeline/saved', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setSavedPipelines(await res.json());
+    } catch (e) {}
+  };
+
+  const handleSaveNamed = async () => {
+    const token = localStorage.getItem('nf_token');
+    await fetch('http://localhost:5000/api/pipeline/saved', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name: saveName || 'Untitled Pipeline', nodes, edges }),
+    });
+    setSaveName('');
+    setShowSaveModal(false);
+    fetchSavedPipelines();
+  };
+
+  const handleLoadPipeline = async (id) => {
+    const token = localStorage.getItem('nf_token');
+    const res = await fetch(`http://localhost:5000/api/pipeline/saved/${id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (res.ok) {
+      const p = await res.json();
+      setNodes(p.nodes); setEdges(p.edges); setCompileStatus('idle');
+      setShowSaveModal(false);
+    }
+  };
+
+  const handleDeletePipeline = async (id) => {
+    const token = localStorage.getItem('nf_token');
+    await fetch(`http://localhost:5000/api/pipeline/saved/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    fetchSavedPipelines();
+  };
+
   const isLive = wsStatus === 'live';
-  const ACTION_ICON = { sms: '📱', email: '📧', log: '📋', default: '🔔' };
+  const ACTION_ICON = { sms: '📱', email: '📧', log: '📋', webhook: '🔗', default: '🔔' };
 
   return (
     <div style={s.root}>
@@ -286,12 +363,25 @@ export default function Canvas() {
           <div style={s.statChip}><span style={s.statVal}>{dataRate}</span><span style={s.statLbl}>pts/s</span></div>
           <div style={s.statChip}><span style={s.statVal}>{totalPoints.toLocaleString()}</span><span style={s.statLbl}>total</span></div>
           <div style={s.statChip}><span style={s.statVal}>{nodes.length}</span><span style={s.statLbl}>nodes</span></div>
+          {activeSubs > 0 && <div style={s.statChip}><span style={{ ...s.statVal, color: '#34d399' }}>{activeSubs}</span><span style={s.statLbl}>streams</span></div>}
+          {/* Pipeline status badge */}
+          <div style={{ ...s.statusBadge, borderColor: compileStatus === 'running' ? '#34d39944' : compileStatus === 'failed' ? '#f8514944' : '#ffffff10', background: compileStatus === 'running' ? '#34d39910' : compileStatus === 'failed' ? '#f8514910' : '#ffffff06' }}>
+            <span style={{ ...s.statusDot, background: compileStatus === 'running' ? '#34d399' : compileStatus === 'failed' ? '#f85149' : '#64748b', boxShadow: compileStatus === 'running' ? '0 0 6px #34d399' : 'none' }} />
+            <span style={{ color: compileStatus === 'running' ? '#34d399' : compileStatus === 'failed' ? '#f85149' : '#64748b', fontSize: 11, fontWeight: 600 }}>
+              {compileStatus === 'running' ? 'Pipeline Running' : compileStatus === 'failed' ? 'Compile Failed' : compileStatus === 'compiling' ? 'Compiling…' : 'Pipeline Idle'}
+            </span>
+          </div>
         </div>
 
         <div style={s.navRight}>
           <button style={s.btnGhost} onClick={() => setLocked(l => !l)}>{locked ? '🔒' : '🔓'} {locked ? 'Locked' : 'Unlocked'}</button>
+          <button style={s.btnGhost} onClick={() => setShowDashboard(d => !d)}>📊 {showDashboard ? 'Hide Dashboard' : 'Dashboard'}</button>
+          <button style={s.btnGhost} onClick={() => setShowInspector(i => !i)}>🔍 {showInspector ? 'Hide Inspector' : 'Inspector'}</button>
           <button style={s.btnGhost} onClick={handleExport}>↓ Export</button>
+          <button style={s.btnGhost} onClick={() => { setShowSaveModal(m => !m); fetchSavedPipelines(); }}>📂 Pipelines</button>
           <button style={s.btnGhost} onClick={handleReset}>↺ Reset</button>
+          {user && <span style={s.userChip}>👤 {user.name}</span>}
+          {onLogout && <button style={s.btnLogout} onClick={onLogout}>Sign Out</button>}
           <button
             style={{
               ...s.btnPrimary,
@@ -316,7 +406,7 @@ export default function Canvas() {
           <div style={s.pipelineSteps}>
             {pipeline.map((step, i) => {
               const isSource = ['sensor', 'simulatorSource', 'httpSource'].includes(step.type);
-              const isAction = ['smsAlert', 'emailAlert', 'logAlert', 'alert'].includes(step.type);
+              const isAction = ['smsAlert', 'emailAlert', 'logAlert', 'webhookAlert', 'alert'].includes(step.type);
               const color = isSource ? '#38bdf8' : isAction ? '#fb7185' : '#a78bfa';
               return (
                 <div key={i} style={s.pipelineStepWrap}>
@@ -370,7 +460,7 @@ export default function Canvas() {
             <ReactFlow
               nodes={nodes} edges={edges}
               onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-              onConnect={onConnect} nodeTypes={nodeTypes}
+              onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
               fitView nodesDraggable={!locked} nodesFocusable={!locked}
               defaultEdgeOptions={{ animated: true }}
             >
@@ -387,6 +477,18 @@ export default function Canvas() {
               />
             </ReactFlow>
           </div>
+
+          {/* ── LIVE CHART ── */}
+          <div style={{ padding: '10px 12px', background: '#06080f', borderTop: '1px solid #ffffff08' }}>
+            <LiveChart deviceId="device-1" threshold={85} />
+          </div>
+
+          {/* ── LIVE DASHBOARD ── */}
+          {showDashboard && (
+            <div style={{ borderTop: '1px solid #ffffff08', overflowY: 'auto', maxHeight: 520 }}>
+              <LiveDashboard isLive={isLive} currentRate={dataRate} totalPoints={totalPoints} />
+            </div>
+          )}
 
           {/* ── TELEMETRY TABLE ── */}
           <div style={s.tableWrap}>
@@ -455,6 +557,71 @@ export default function Canvas() {
           </div>
         </aside>
       </div>
+
+      {/* ── INSPECTOR PANEL ── */}
+      {showInspector && (
+        <div style={s.inspectorBar}>
+          <div style={s.inspectorTabs}>
+            {[['json', '{ } JSON'], ['issues', '⚠ Issues'], ['alerts', '🔔 Alerts']].map(([id, label]) => (
+              <button
+                key={id}
+                style={{ ...s.inspTabBtn, ...(inspectorTab === id ? s.inspTabActive : {}) }}
+                onClick={() => setInspectorTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+            <button style={s.inspClose} onClick={() => setShowInspector(false)}>✕</button>
+          </div>
+          <div style={s.inspectorBody}>
+            {inspectorTab === 'json' && (() => {
+              const proof = runSerializationProof(nodes, edges, { name: 'NexusFlow Pipeline' });
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {proof.checks.map((c) => (
+                      <span key={c.name} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: c.pass ? '#34d39915' : '#f8514915', color: c.pass ? '#34d399' : '#f85149', border: `1px solid ${c.pass ? '#34d39930' : '#f8514930'}` }}>
+                        {c.pass ? '✔' : '✖'} {c.name}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button style={s.inspBtn} onClick={() => navigator.clipboard.writeText(proof.text)}>Copy JSON</button>
+                    <button style={s.inspBtn} onClick={handleExport}>Download</button>
+                  </div>
+                  <pre style={s.inspPre}>{JSON.stringify(proof.graph, null, 2)}</pre>
+                </div>
+              );
+            })()}
+            {inspectorTab === 'issues' && (() => {
+              const v = validateGraph(serializeGraph(nodes, edges));
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {v.errors.length === 0 && v.warnings.length === 0 && (
+                    <span style={{ color: '#34d399', fontSize: 12 }}>✔ Graph is valid — no issues found.</span>
+                  )}
+                  {v.errors.map((e, i) => (
+                    <div key={i} style={{ fontSize: 11, color: '#f85149', background: '#f8514910', border: '1px solid #f8514930', borderRadius: 6, padding: '6px 10px' }}>✖ {e.message}</div>
+                  ))}
+                  {v.warnings.map((w, i) => (
+                    <div key={i} style={{ fontSize: 11, color: '#fbbf24', background: '#fbbf2410', border: '1px solid #fbbf2430', borderRadius: 6, padding: '6px 10px' }}>⚠ {w.message}</div>
+                  ))}
+                </div>
+              );
+            })()}
+            {inspectorTab === 'alerts' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {alertLog.length === 0 && <span style={{ color: '#475569', fontSize: 12 }}>No alerts fired yet.</span>}
+                {alertLog.map((a) => (
+                  <div key={a.id} style={{ fontSize: 11, color: '#fb7185', background: '#fb718510', border: '1px solid #fb718530', borderRadius: 6, padding: '6px 10px' }}>
+                    <b>{a.label}</b> · {a.value}°C &gt; {a.threshold} · {a.actionType?.toUpperCase()} · {a.time}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -480,6 +647,8 @@ const s = {
   btnPrimary: { background: 'linear-gradient(135deg, #1a3a5c, #1e4976)', color: '#58a6ff', border: '1px solid #1f6feb', borderRadius: 7, padding: '5px 14px', cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'Inter, sans-serif' },
   btnSuccess: { background: 'linear-gradient(135deg, #0f2d1a, #14532d)', color: '#34d399', border: '1px solid #16a34a' },
   btnError: { background: 'linear-gradient(135deg, #2d0f0f, #531414)', color: '#f85149', border: '1px solid #a31616' },
+  userChip: { fontSize: 11, color: '#8b949e', background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: 7, padding: '4px 10px' },
+  btnLogout: { background: 'transparent', color: '#f85149', border: '1px solid #f8514930', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 500, fontFamily: 'Inter, sans-serif' },
 
   pipelineBar: { display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 38, background: '#0a0d16', borderBottom: '1px solid #ffffff08', flexShrink: 0 },
   pipelineTitle: { fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '1px', flexShrink: 0 },
@@ -528,4 +697,13 @@ const s = {
   logEntryBot: { display: 'flex', alignItems: 'baseline', gap: 6 },
   logValue: { fontSize: 14, fontWeight: 700, color: '#fb7185', fontFamily: 'JetBrains Mono, monospace' },
   logThresh: { fontSize: 9, color: '#475569' },
+
+  inspectorBar: { background: '#0a0d16', borderTop: '1px solid #1e293b', flexShrink: 0, maxHeight: 320, display: 'flex', flexDirection: 'column' },
+  inspectorTabs: { display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderBottom: '1px solid #1e293b' },
+  inspTabBtn: { background: 'transparent', border: 'none', color: '#64748b', padding: '4px 12px', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  inspTabActive: { background: '#1e293b', color: '#38bdf8' },
+  inspClose: { marginLeft: 'auto', background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13, padding: '2px 6px' },
+  inspectorBody: { flex: 1, overflowY: 'auto', padding: '10px 14px' },
+  inspPre: { fontSize: 10, color: '#64748b', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#060910', border: '1px solid #1e293b', borderRadius: 6, padding: 10, maxHeight: 180, overflowY: 'auto' },
+  inspBtn: { background: '#1e293b', border: '1px solid #334155', color: '#94a3b8', borderRadius: 5, padding: '4px 10px', fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif' },
 };

@@ -1,7 +1,5 @@
 import { useReactFlow } from 'reactflow';
 
-// Inline editor for a node parameter (writes node.data[field]). "nodrag" stops React Flow
-// from dragging the node while you type.
 export default function ParamInput({ id, field, label, value, options, type = 'number', width = 64 }) {
   const { setNodes } = useReactFlow();
   const update = (v) => setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, [field]: v } } : n)));
@@ -17,7 +15,7 @@ export default function ParamInput({ id, field, label, value, options, type = 'n
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
-        <input {...common} type={type} step="any" value={value ?? ''} onChange={(e) => update(e.target.value)} spellCheck={false} />
+        <input {...common} type={type} step="any" value={value ?? ''} onChange={(e) => update(type === 'number' ? Number(e.target.value) : e.target.value)} spellCheck={false} />
       )}
     </label>
   );
