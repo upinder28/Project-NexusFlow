@@ -3,21 +3,21 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "start": "node server.js",
     "simulate": "node simulator.js",
-    "stress": "node stressTest.js"
+    "stress": "node stressTest.js",
+    "benchmark": "node scripts/benchmark.js",
+    "storage-compare": "node scripts/storageCompare.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.1",
     "rxjs": "^7.8.2",
     "ws": "^8.21.3"

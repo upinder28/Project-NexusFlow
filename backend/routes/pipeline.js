@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const Pipeline = require('../models/Pipeline');
 const { pipelineStatus, activeSubscriptions } = require('../compiler');
 const RuleLog = require('../models/RuleLog');
 const authMiddleware = require('../middleware/auth');
