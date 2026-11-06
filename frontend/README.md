@@ -1,70 +1,241 @@
-# Getting Started with Create React App
+# Project NexusFlow
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Project NexusFlow is a visual workflow automation platform that allows users to create, connect, and manage workflow nodes through an interactive canvas.
+
+The frontend provides a visual interface for building workflows, configuring node parameters, monitoring workflow execution, and viewing live execution updates.
+
+## Features
+
+- **Visual Workflow Canvas**  
+  Build workflows using an interactive node-based canvas.
+
+- **Drag-and-Drop Nodes**  
+  Add and arrange different workflow nodes on the canvas.
+
+- **Node Connections**  
+  Connect nodes to define the flow and execution order.
+
+- **Node Configuration**  
+  Configure parameters and inputs for individual nodes.
+
+- **Live Dashboard**  
+  Monitor workflow execution and view real-time status updates.
+
+- **Reusable Node Registry**  
+  Centralized node definitions make it easier to manage and extend available workflow nodes.
+
+- **Sample Workflows**  
+  Includes sample graph configurations for testing and demonstrating workflows.
+
+- **Live Store**  
+  Manages workflow and execution state across the frontend.
+
+- **Testing**  
+  Includes tests for frontend workflow-related functionality.
+
+## Tech Stack
+
+### Frontend
+
+- React
+- Vite
+- React Flow
+- JavaScript
+- RxJS
+- CSS
+
+### Development Tools
+
+- Git
+- GitHub
+- Visual Studio Code
+- npm
+
+## Project Structure
+
+```text
+frontend/
+│
+├── src/
+│   ├── components/
+│   │   ├── LiveDashboard.jsx
+│   │   ├── ParamInput.jsx
+│   │   └── ...
+│   │
+│   ├── pages/
+│   │   ├── Canvas.jsx
+│   │   └── ...
+│   │
+│   ├── lib/
+│   │   ├── liveStore.test.js
+│   │   ├── nodeRegistry.js
+│   │   └── sampleGraphs.js
+│   │
+│   └── ...
+│
+├── package.json
+└── README.md
+```
+
+## Getting Started
+
+### Prerequisites
+
+Make sure you have the following installed:
+
+- Node.js
+- npm
+- Git
+
+### Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/upinder28/Project-NexusFlow.git
+```
+
+Navigate to the frontend directory:
+
+```bash
+cd Project-NexusFlow/frontend
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+### Run the Development Server
+
+Start the frontend using:
+
+```bash
+npm start
+```
+
+The application will be available at:
+
+```text
+http://localhost:5173
+```
+
+> The exact port may vary depending on the Vite configuration.
 
 ## Available Scripts
 
-In the project directory, you can run:
-
 ### `npm start`
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
-
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Starts the Vite development server.
 
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Creates an optimized production build.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### `npm run preview`
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Runs the production build locally for preview.
 
-### `npm run eject`
+### `npm test`
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Runs the available frontend tests if the project's test configuration is enabled.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Core Frontend Components
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### Canvas
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+The main workflow-building interface. It provides the interactive React Flow canvas where users can add, configure, move, and connect workflow nodes.
 
-## Learn More
+### Live Dashboard
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Displays workflow execution information and live status updates.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### ParamInput
 
-### Code Splitting
+Provides reusable UI components for configuring node parameters and inputs.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### Node Registry
 
-### Analyzing the Bundle Size
+`nodeRegistry.js` maintains the available node definitions and their associated configuration.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+### Sample Graphs
 
-### Making a Progressive Web App
+`sampleGraphs.js` contains predefined workflow graphs that can be used for testing and demonstrating the workflow system.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+### Live Store
 
-### Advanced Configuration
+The live store manages frontend state related to workflow execution and live updates.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## Development Workflow
 
-### Deployment
+The project follows a feature-branch workflow.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Current development branch:
 
-### `npm run build` fails to minify
+```text
+Swati-Sharma
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Typical workflow:
+
+```bash
+git checkout Swati-Sharma
+git pull origin Swati-Sharma
+
+# Make changes
+
+git status
+git add .
+git commit -m "Describe your changes"
+git push origin Swati-Sharma
+```
+
+## Testing
+
+Before pushing changes, it is recommended to verify the application locally:
+
+```bash
+npm start
+```
+
+Then test:
+
+- Workflow creation
+- Node addition
+- Node connections
+- Parameter configuration
+- Dashboard updates
+- Workflow execution states
+- Error handling
+
+Run the project's tests when applicable:
+
+```bash
+npm test
+```
+
+## Build
+
+To create a production build:
+
+```bash
+npm run build
+```
+
+The generated production files can then be served using a suitable web server or deployment platform.
+
+## Future Improvements
+
+- Add more workflow node types
+- Improve workflow validation
+- Add advanced node configuration options
+- Improve real-time execution monitoring
+- Add workflow persistence
+- Improve error and status visualization
+- Add more automated frontend tests
+
+## Contributors
+
+Developed as part of the Project NexusFlow team.
+

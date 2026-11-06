@@ -1,11 +1,9 @@
 const express = require('express');
 const router = express.Router();
-<<<<<<< Updated upstream
+
 const { pipelineStatus, activeSubscriptions } = require('../compiler');
-=======
 const Pipeline = require('../models/Pipeline');
 const { deploy, stop, status } = require('../compiler');
->>>>>>> Stashed changes
 const RuleLog = require('../models/RuleLog');
 const authMiddleware = require('../middleware/auth');
 
